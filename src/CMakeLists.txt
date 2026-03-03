@@ -196,6 +196,7 @@ target_link_libraries(${PROJECT_LIBRARY_TARGET_NAME}
   gz-transport::parameters
   sdformat::sdformat
   protobuf::libprotobuf
+  flecs::flecs
   PRIVATE
   gz-plugin::loader
 )

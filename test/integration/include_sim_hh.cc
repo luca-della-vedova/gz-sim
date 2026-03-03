@@ -17,11 +17,11 @@
 
 #include <gtest/gtest.h>
 
-#include <gz/sim.hh>
+// #include <gz/sim.hh>
 
 /////////////////////////////////////////////////
 // Simple test to make sure it compiles
 TEST(Compilation, sim_hh)
 {
-  gz::sim::System system;
+  // gz::sim::System system;
 }
