@@ -175,6 +175,8 @@ class FlecsManyComponentFixture: public benchmark::Fixture
     */
     auto entityCount = _state.range(0);
     this->Populate(entityCount);
+    this->q_all = ecs->query<components::Name&, AngularVelocity&, Inertial&, LinearAcceleration&, LinearVelocity&>();
+    this->q_opt = ecs->query<components::Name&, AngularVelocity*, Inertial*, LinearAcceleration*, LinearVelocity*>();
   }
 
   protected: void Populate(int _entityCount)
@@ -189,6 +191,8 @@ class FlecsManyComponentFixture: public benchmark::Fixture
   }
 
   std::unique_ptr<flecs::world> ecs;
+  flecs::query<components::Name&, AngularVelocity&, Inertial&, LinearAcceleration&, LinearVelocity&> q_all;
+  flecs::query<components::Name&, AngularVelocity*, Inertial*, LinearAcceleration*, LinearVelocity*> q_opt;
 };
 
 class EnttManyComponentFixture: public benchmark::Fixture
@@ -282,7 +286,7 @@ BENCHMARK_DEFINE_F(ManyComponentFixture, Each5ComponentCache)
   }
 }
 
-BENCHMARK_DEFINE_F(FlecsManyComponentFixture, FlecsEach5ComponentCache)
+BENCHMARK_DEFINE_F(FlecsManyComponentFixture, FlecsEach5ComponentNoCache)
 (benchmark::State &_st)
 {
   for (auto _ : _st)
@@ -294,6 +298,36 @@ BENCHMARK_DEFINE_F(FlecsManyComponentFixture, FlecsEach5ComponentCache)
       int entitiesMatched = 0;
 
       ecs->each(
+          [&](const components::Name&,
+              const AngularVelocity&,
+              const Inertial&,
+              const LinearAcceleration&,
+              const LinearVelocity&)->bool
+          {
+            entitiesMatched++;
+            return true;
+          });
+
+      if (entitiesMatched != entityCount)
+      {
+        _st.SkipWithError("Failed to match correct number of entities");
+      }
+    }
+  }
+}
+
+BENCHMARK_DEFINE_F(FlecsManyComponentFixture, FlecsEach5ComponentCache)
+(benchmark::State &_st)
+{
+  for (auto _ : _st)
+  {
+    auto entityCount = _st.range(0);
+
+    for (int eachIter = 0; eachIter < kEachIterations; eachIter++)
+    {
+      int entitiesMatched = 0;
+
+      q_all.each(
           [&](const components::Name&,
               const AngularVelocity&,
               const Inertial&,
@@ -411,7 +445,7 @@ BENCHMARK_DEFINE_F(FlecsManyComponentFixture, FlecsEach1ComponentGet4More)
   }
 }
 
-BENCHMARK_DEFINE_F(FlecsManyComponentFixture, FlecsEach1ComponentGet4MoreOptional)
+BENCHMARK_DEFINE_F(FlecsManyComponentFixture, FlecsEach1ComponentGet4MoreOptionalNoCache)
 (benchmark::State &_st)
 {
   for (auto _ : _st)
@@ -423,8 +457,41 @@ BENCHMARK_DEFINE_F(FlecsManyComponentFixture, FlecsEach1ComponentGet4MoreOptiona
       int entitiesMatched = 0;
 
       ecs->each(
-          [&](flecs::entity e,
-              const components::Name&,
+          [&](const components::Name&,
+              const AngularVelocity* av,
+              const Inertial* i,
+              const LinearAcceleration* la,
+              const LinearVelocity* lv
+              )->bool
+          {
+            if (av != nullptr && i != nullptr && la != nullptr && lv != nullptr) {
+              entitiesMatched++;
+            }
+
+            return true;
+          });
+
+      if (entitiesMatched != entityCount)
+      {
+        _st.SkipWithError("Failed to match correct number of entities");
+      }
+    }
+  }
+}
+
+BENCHMARK_DEFINE_F(FlecsManyComponentFixture, FlecsEach1ComponentGet4MoreOptionalCache)
+(benchmark::State &_st)
+{
+  for (auto _ : _st)
+  {
+    auto entityCount = _st.range(0);
+
+    for (int eachIter = 0; eachIter < kEachIterations; eachIter++)
+    {
+      int entitiesMatched = 0;
+
+      q_opt.each(
+          [&](const components::Name&,
               const AngularVelocity* av,
               const Inertial* i,
               const LinearAcceleration* la,
@@ -677,6 +744,13 @@ BENCHMARK_REGISTER_F(FlecsManyComponentFixture, FlecsEach5ComponentCache)
   ->Arg(10000)
   ->Unit(benchmark::kMillisecond);
 
+BENCHMARK_REGISTER_F(FlecsManyComponentFixture, FlecsEach5ComponentNoCache)
+  ->Arg(10)
+  ->Arg(100)
+  ->Arg(1000)
+  ->Arg(10000)
+  ->Unit(benchmark::kMillisecond);
+
 BENCHMARK_REGISTER_F(EnttManyComponentFixture, EnttEach5ComponentCache)
   ->Arg(10)
   ->Arg(100)
@@ -698,7 +772,14 @@ BENCHMARK_REGISTER_F(FlecsManyComponentFixture, FlecsEach1ComponentGet4More)
   ->Arg(10000)
   ->Unit(benchmark::kMillisecond);
 
-BENCHMARK_REGISTER_F(FlecsManyComponentFixture, FlecsEach1ComponentGet4MoreOptional)
+BENCHMARK_REGISTER_F(FlecsManyComponentFixture, FlecsEach1ComponentGet4MoreOptionalNoCache)
+  ->Arg(10)
+  ->Arg(100)
+  ->Arg(1000)
+  ->Arg(10000)
+  ->Unit(benchmark::kMillisecond);
+
+BENCHMARK_REGISTER_F(FlecsManyComponentFixture, FlecsEach1ComponentGet4MoreOptionalCache)
   ->Arg(10)
   ->Arg(100)
   ->Arg(1000)
