@@ -175,8 +175,9 @@ class FlecsManyComponentFixture: public benchmark::Fixture
     */
     auto entityCount = _state.range(0);
     this->Populate(entityCount);
-    this->q_all = ecs->query<components::Name&, AngularVelocity&, Inertial&, LinearAcceleration&, LinearVelocity&>();
-    this->q_opt = ecs->query<components::Name&, AngularVelocity*, Inertial*, LinearAcceleration*, LinearVelocity*>();
+    this->q_name = ecs->query_builder<components::Name&>().cached().build();
+    this->q_all = ecs->query_builder<components::Name&, AngularVelocity&, Inertial&, LinearAcceleration&, LinearVelocity&>().cached().build();
+    this->q_opt = ecs->query_builder<components::Name&, AngularVelocity*, Inertial*, LinearAcceleration*, LinearVelocity*>().cached().build();
   }
 
   protected: void Populate(int _entityCount)
@@ -191,6 +192,7 @@ class FlecsManyComponentFixture: public benchmark::Fixture
   }
 
   std::unique_ptr<flecs::world> ecs;
+  flecs::query<components::Name&> q_name;
   flecs::query<components::Name&, AngularVelocity&, Inertial&, LinearAcceleration&, LinearVelocity&> q_all;
   flecs::query<components::Name&, AngularVelocity*, Inertial*, LinearAcceleration*, LinearVelocity*> q_opt;
 };
@@ -346,7 +348,7 @@ BENCHMARK_DEFINE_F(FlecsManyComponentFixture, FlecsEach5ComponentCache)
   }
 }
 
-BENCHMARK_DEFINE_F(EnttManyComponentFixture, EnttEach5ComponentCache)
+BENCHMARK_DEFINE_F(EnttManyComponentFixture, EnttEach5Component)
 (benchmark::State &_st)
 {
   for (auto _ : _st)
@@ -423,7 +425,7 @@ BENCHMARK_DEFINE_F(FlecsManyComponentFixture, FlecsEach1ComponentGet4More)
     {
       int entitiesMatched = 0;
 
-      ecs->each(
+      q_name.each(
           [&](flecs::entity e,
               const components::Name&)->bool
           {
@@ -654,51 +656,6 @@ BENCHMARK_DEFINE_F(ManyComponentFixture, Each5ComponentNoCache)
   }
 }
 
-BENCHMARK_DEFINE_F(ManyComponentFixture, Each10ComponentNoCache)
-(benchmark::State &_st)
-{
-  for (auto _ : _st)
-  {
-    auto entityCount = _st.range(0);
-
-    for (int eachIter = 0; eachIter < kEachIterations; eachIter++)
-    {
-      int entitiesMatched = 0;
-
-      mgr->EachNoCache<components::Name,
-                AngularVelocity,
-                WorldAngularVelocity,
-                Inertial,
-                LinearAcceleration,
-                WorldLinearAcceleration,
-                LinearVelocity,
-                WorldLinearVelocity,
-                Pose,
-                WorldPose>(
-          [&](const Entity &,
-              const components::Name *,
-              const AngularVelocity *,
-              const WorldAngularVelocity *,
-              const Inertial *,
-              const LinearAcceleration *,
-              const WorldLinearAcceleration *,
-              const LinearVelocity *,
-              const WorldLinearVelocity *,
-              const Pose *,
-              const WorldPose *)->bool
-          {
-            entitiesMatched++;
-            return true;
-          });
-
-      if (entitiesMatched != entityCount)
-      {
-        _st.SkipWithError("Failed to match correct number of entities");
-      }
-    }
-  }
-}
-
 /// Method to generate test argument combinations.  google/benchmark does
 /// powers of 2 by default, which looks kind of ugly.
 static void EachTestArgs(Benchmark *_b)
@@ -718,26 +675,7 @@ static void EachTestArgs(Benchmark *_b)
   }
 }
 
-/*
-BENCHMARK_REGISTER_F(EntityComponentManagerFixture, EachCache)
-  ->Unit(benchmark::kMillisecond)
-  ->Apply(EachTestArgs);
-
-BENCHMARK_REGISTER_F(ManyComponentFixture, Each1ComponentCache)
-  ->Arg(10)
-  ->Arg(100)
-  ->Arg(1000)
-  ->Unit(benchmark::kMillisecond);
-*/
-
-BENCHMARK_REGISTER_F(ManyComponentFixture, Each5ComponentCache)
-  ->Arg(10)
-  ->Arg(100)
-  ->Arg(1000)
-  ->Arg(10000)
-  ->Unit(benchmark::kMillisecond);
-
-BENCHMARK_REGISTER_F(FlecsManyComponentFixture, FlecsEach5ComponentCache)
+BENCHMARK_REGISTER_F(ManyComponentFixture, Each5ComponentNoCache)
   ->Arg(10)
   ->Arg(100)
   ->Arg(1000)
@@ -751,7 +689,21 @@ BENCHMARK_REGISTER_F(FlecsManyComponentFixture, FlecsEach5ComponentNoCache)
   ->Arg(10000)
   ->Unit(benchmark::kMillisecond);
 
-BENCHMARK_REGISTER_F(EnttManyComponentFixture, EnttEach5ComponentCache)
+BENCHMARK_REGISTER_F(EnttManyComponentFixture, EnttEach5Component)
+  ->Arg(10)
+  ->Arg(100)
+  ->Arg(1000)
+  ->Arg(10000)
+  ->Unit(benchmark::kMillisecond);
+
+BENCHMARK_REGISTER_F(ManyComponentFixture, Each5ComponentCache)
+  ->Arg(10)
+  ->Arg(100)
+  ->Arg(1000)
+  ->Arg(10000)
+  ->Unit(benchmark::kMillisecond);
+
+BENCHMARK_REGISTER_F(FlecsManyComponentFixture, FlecsEach5ComponentCache)
   ->Arg(10)
   ->Arg(100)
   ->Arg(1000)
@@ -792,21 +744,6 @@ BENCHMARK_REGISTER_F(EnttManyComponentFixture, EnttEach1ComponentGet4More)
   ->Arg(1000)
   ->Arg(10000)
   ->Unit(benchmark::kMillisecond);
-
-BENCHMARK_REGISTER_F(ManyComponentFixture, Each5ComponentNoCache)
-  ->Arg(10)
-  ->Arg(100)
-  ->Arg(1000)
-  ->Arg(10000)
-  ->Unit(benchmark::kMillisecond);
-
-  /*
-BENCHMARK_REGISTER_F(ManyComponentFixture, Each10ComponentCache)
-  ->Arg(10)
-  ->Arg(100)
-  ->Arg(1000)
-  ->Unit(benchmark::kMillisecond);
-  */
 
 // OSX needs the semicolon, Ubuntu complains that there's an extra ';'
 #if !defined(_MSC_VER)
