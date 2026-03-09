@@ -52,6 +52,33 @@ using namespace sim;
 
 struct SimEntity { };
 
+// TODO(luca) we need to do this at registration so in a macro but we also
+// should try to not make flecs part of the public API
+struct FlecsGzBridge {
+public:
+  using SyncFunc = std::function<void(flecs::entity&, const gz::sim::components::BaseComponent*)>;
+
+  template <typename T>
+    void RegisterType(flecs::world &_world) {
+      _world.component<T>();
+
+      this->syncMap[T::TypeId] = [](flecs::entity& _e, const gz::sim::components::BaseComponent* _comp) {
+        _e.set<T>({static_cast<const T*>(_comp)->Data()});
+      };
+    }
+
+    bool SyncComponent(const ComponentTypeId _id, flecs::entity _e, const gz::sim::components::BaseComponent* _comp) {
+      const auto it = this->syncMap.find(_id);
+      if (it == this->syncMap.end()) {
+        return false;
+      }
+      it->second(_e, _comp);
+      return true;
+    }
+private:
+  std::unordered_map<ComponentTypeId, SyncFunc> syncMap;
+};
+
 class gz::sim::FlecsComponentManagerPrivate
 {
   public: flecs::world world;
@@ -61,6 +88,10 @@ class gz::sim::FlecsComponentManagerPrivate
 
   // Flecs stores components in entities that might change at runtime
   public: std::unordered_map<ComponentTypeId, flecs::entity> typeIdToEntity;
+
+  // To deal with registration
+  // TODO(luca) Move into factory
+  public: FlecsGzBridge bridge;
   /*
   /// \brief Implementation of the CreateEntity function, which takes a specific
   /// entity as input.
