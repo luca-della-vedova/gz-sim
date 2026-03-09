@@ -197,6 +197,9 @@ namespace components
   /// \brief A factory that generates a component based on a string type.
   class Factory
   {
+#ifdef FLECS_BRIDGE
+    public: using SyncFunc = std::function<void(flecs::entity&, const BaseComponent*)>;
+#endif
     public: Factory(Factory &) = delete;
     public: Factory(const Factory &) = delete;
     public: void operator=(const Factory &) = delete;

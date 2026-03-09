@@ -73,6 +73,7 @@ set (sources
   Conversions.cc
   ComponentFactory.cc
   EntityComponentManager.cc
+  FlecsComponentManager.cc
   EntityComponentManagerDiff.cc
   InstallationDirectories.cc
   Joint.cc
@@ -111,6 +112,7 @@ set (gtest_sources
   Component_TEST.cc
   Conversions_TEST.cc
   EntityComponentManager_TEST.cc
+  FlecsComponentManager_TEST.cc
   EventManager_TEST.cc
   Joint_TEST.cc
   Light_TEST.cc
@@ -198,6 +200,7 @@ target_link_libraries(${PROJECT_LIBRARY_TARGET_NAME}
   protobuf::libprotobuf
   PRIVATE
   gz-plugin::loader
+  flecs::flecs
 )
 
 if(ENABLE_GUI)
