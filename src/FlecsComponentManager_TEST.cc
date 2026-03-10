@@ -96,10 +96,12 @@ class FlecsCompMgrTest : public FlecsComponentManager
   {
     this->ClearNewlyCreatedEntities();
   }
+  */
   public: void ProcessEntityRemovals()
   {
     this->ProcessRemoveEntityRequests();
   }
+          /*
   public: void RunSetAllComponentsUnchanged()
   {
     this->SetAllComponentsUnchanged();
@@ -164,7 +166,6 @@ TEST_P(FlecsComponentManagerFixture,
   auto cIntEInt = manager.CreateComponent<IntComponent>(eInt,
       IntComponent(123));
   ASSERT_NE(nullptr, cIntEInt);
-  /*
   auto cDoubleEDouble = manager.CreateComponent<DoubleComponent>(eDouble,
       DoubleComponent(0.123));
   ASSERT_NE(nullptr, cDoubleEDouble);
@@ -179,12 +180,12 @@ TEST_P(FlecsComponentManagerFixture,
   EXPECT_TRUE(manager.EntityHasComponentType(eInt, IntComponent::typeId));
   EXPECT_EQ(1u, manager.ComponentTypes(eInt).size());
   EXPECT_EQ(IntComponent::typeId, *manager.ComponentTypes(eInt).begin());
-  EXPECT_EQ(cIntEInt, manager.Component<IntComponent>(eInt));
+  EXPECT_EQ(123, manager.Component<IntComponent>(eInt)->Data());
 
   EXPECT_TRUE(manager.EntityHasComponentType(eDouble, DoubleComponent::typeId));
   EXPECT_EQ(1u, manager.ComponentTypes(eDouble).size());
   EXPECT_EQ(DoubleComponent::typeId, *manager.ComponentTypes(eDouble).begin());
-  EXPECT_EQ(cDoubleEDouble, manager.Component<DoubleComponent>(eDouble));
+  EXPECT_EQ(0.123, manager.Component<DoubleComponent>(eDouble)->Data());
 
   EXPECT_TRUE(manager.EntityHasComponentType(eIntDouble, IntComponent::typeId));
   EXPECT_TRUE(manager.EntityHasComponentType(eIntDouble,
@@ -193,8 +194,8 @@ TEST_P(FlecsComponentManagerFixture,
   auto types = manager.ComponentTypes(eIntDouble);
   EXPECT_NE(types.end(), types.find(IntComponent::typeId));
   EXPECT_NE(types.end(), types.find(DoubleComponent::typeId));
-  EXPECT_EQ(cIntEIntDouble, manager.Component<IntComponent>(eIntDouble));
-  EXPECT_EQ(cDoubleEIntDouble, manager.Component<DoubleComponent>(eIntDouble));
+  EXPECT_EQ(456, manager.Component<IntComponent>(eIntDouble)->Data());
+  EXPECT_EQ(0.456, manager.Component<DoubleComponent>(eIntDouble)->Data());
 
   // Remove component by type id
   EXPECT_TRUE(manager.RemoveComponent(eInt, IntComponent::typeId));
@@ -227,10 +228,8 @@ TEST_P(FlecsComponentManagerFixture,
       DoubleComponent::typeId));
   EXPECT_EQ(0u, manager.ComponentTypes(eIntDouble).size());
   EXPECT_EQ(nullptr, manager.Component<DoubleComponent>(eIntDouble));
-  */
 }
 
-/*
 /////////////////////////////////////////////////
 TEST_P(FlecsComponentManagerFixture,
        GZ_UTILS_TEST_DISABLED_ON_WIN32(EntitiesAndComponents))
@@ -560,11 +559,13 @@ TEST_P(FlecsComponentManagerFixture,
         });
     EXPECT_EQ(2, count);
 
+    // TODO(luca) API is gone, remove test?
     // Rebuild the view.
-    manager.RebuildViews();
+    // manager.RebuildViews();
   }
 }
 
+/*
 //////////////////////////////////////////////////
 TEST_P(FlecsComponentManagerFixture,
        GZ_UTILS_TEST_DISABLED_ON_WIN32(ViewsAddComponents))

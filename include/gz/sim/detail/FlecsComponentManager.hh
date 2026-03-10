@@ -28,8 +28,10 @@
 #include <utility>
 #include <vector>
 
+#include <flecs.h>
 #include <gz/math/Helpers.hh>
 
+#include "gz/sim/components/Factory.hh"
 #include "gz/sim/FlecsComponentManager.hh"
 
 namespace gz
@@ -39,7 +41,6 @@ namespace sim
 // Inline bracket to help doxygen filtering.
 inline namespace GZ_SIM_VERSION_NAMESPACE {
 //////////////////////////////////////////////////
-/*
 namespace traits
 {
   /// \brief Helper struct to determine if an equality operator is present.
@@ -89,28 +90,18 @@ auto CompareData = [](const DataType &_a, const DataType &_b) -> bool
 
   return false;
 };
-*/
 
 //////////////////////////////////////////////////
 template<typename ComponentTypeT>
 ComponentTypeT *FlecsComponentManager::CreateComponent(const Entity _entity,
             const ComponentTypeT &_data)
 {
-  auto updateData = this->CreateComponentImplementation(_entity,
-      ComponentTypeT::typeId, &_data);
-  auto comp = this->Component<ComponentTypeT>(_entity);
-  if (updateData)
-  {
-    if (!comp)
-    {
-      gzerr << "Internal error. Failure to create a component of type "
-        << ComponentTypeT::typeId << " for entity " << _entity
-        << ". This should never happen!\n";
-      return comp;
-    }
-    *comp = _data;
-  }
-  return comp;
+  if (!this->HasEntity(_entity))
+    return nullptr;
+  flecs::entity e = this->world.entity(_entity + this->EntityOffset());
+  e.set<ComponentTypeT>(_data);
+  components::Factory::Instance()->SyncTypeIdMap<ComponentTypeT>(this->world);
+  return e.try_get_mut<ComponentTypeT>();
 }
 
 //////////////////////////////////////////////////
@@ -118,24 +109,21 @@ template<typename ComponentTypeT>
 const ComponentTypeT *FlecsComponentManager::Component(
     const Entity _entity) const
 {
-  // Get a unique identifier to the component type
-  const ComponentTypeId typeId = ComponentTypeT::typeId;
-
-  return static_cast<const ComponentTypeT *>(
-      this->ComponentImplementation(_entity, typeId));
+  if (!this->HasEntity(_entity))
+    return nullptr;
+  flecs::entity e = this->world.entity(_entity + this->EntityOffset());
+  return e.try_get<ComponentTypeT>();
 }
 
 //////////////////////////////////////////////////
 template<typename ComponentTypeT>
 ComponentTypeT *FlecsComponentManager::Component(const Entity _entity)
 {
-  // Get a unique identifier to the component type
-  const ComponentTypeId typeId = ComponentTypeT::typeId;
-
-  return static_cast<ComponentTypeT *>(
-      this->ComponentImplementation(_entity, typeId));
+  if (!this->HasEntity(_entity))
+    return nullptr;
+  flecs::entity e = this->world.entity(_entity + this->EntityOffset());
+  return e.try_get_mut<ComponentTypeT>();
 }
-/*
 
 //////////////////////////////////////////////////
 template<typename ComponentTypeT>
@@ -179,6 +167,7 @@ bool FlecsComponentManager::SetComponentData(const Entity _entity,
   return comp->SetData(_data, CompareData<typename ComponentTypeT::Type>);
 }
 
+/*
 //////////////////////////////////////////////////
 template<typename ...ComponentTypeTs>
 Entity FlecsComponentManager::EntityByComponents(
@@ -298,12 +287,14 @@ std::vector<Entity> FlecsComponentManager::ChildrenByComponents(Entity _parent,
   return result;
 }
 
+*/
 //////////////////////////////////////////////////
 template <typename T>
 struct FlecsComponentManager::identity  // NOLINT
 {
   using type = T;
 };
+/*
 
 //////////////////////////////////////////////////
 template<typename ...ComponentTypeTs>
@@ -346,6 +337,7 @@ void FlecsComponentManager::EachNoCache(typename identity<std::function<
     }
   }
 }
+*/
 
 namespace detail
 {
@@ -396,20 +388,22 @@ template<typename ...ComponentTypeTs>
 void FlecsComponentManager::Each(typename identity<std::function<
     bool(const Entity &_entity, const ComponentTypeTs *...)>>::type _f) const
 {
-  // Get the view. This will create a new view if one does not already
-  // exist.
-  auto view = this->FindView<ComponentTypeTs...>();
-
-  // Iterate over the entities in the view, and invoke the callback
-  // function.
-  for (const Entity entity : view->Entities())
-  {
-    const auto &data = view->EntityComponentData(entity);
-    if (!detail::applyFunction<const ComponentTypeTs...>(_f, entity, data))
-    {
-      break;
+  flecs::query<const ComponentTypeTs...> q = this->world.query<const ComponentTypeTs...>();
+  q.run([&](flecs::iter& _it) {
+    while (_it.next()) {
+      auto helper = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+        auto arrays = std::make_tuple(_it.field<const ComponentTypeTs>(Is + 1)...);
+        for (auto i : _it) {
+          flecs::entity entity = _it.entity(i);
+          Entity gzEntity = entity.id() - this->EntityOffset();
+          if (!_f(gzEntity, &std::get<Is>(arrays)[i]...)) {
+            break;
+          }
+        }
+      };
+      helper(std::index_sequence_for<ComponentTypeTs...>{});
     }
-  }
+  });
 }
 
 //////////////////////////////////////////////////
@@ -417,22 +411,25 @@ template<typename ...ComponentTypeTs>
 void FlecsComponentManager::Each(typename identity<std::function<
     bool(const Entity &_entity, ComponentTypeTs *...)>>::type _f)
 {
-  // Get the view. This will create a new view if one does not already
-  // exist.
-  auto view = this->FindView<ComponentTypeTs...>();
-
-  // Iterate over the entities in the view, and invoke the callback
-  // function.
-  for (const Entity entity : view->Entities())
-  {
-    const auto &data = view->EntityComponentData(entity);
-    if (!detail::applyFunction<ComponentTypeTs...>(_f, entity, data))
-    {
-      break;
+  flecs::query<ComponentTypeTs...> q = this->world.query<ComponentTypeTs...>();
+  q.run([&](flecs::iter& _it) {
+    while (_it.next()) {
+      auto helper = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+        auto arrays = std::make_tuple(_it.field<ComponentTypeTs>(Is + 1)...);
+        for (auto i : _it) {
+          flecs::entity entity = _it.entity(i);
+          Entity gzEntity = entity.id() - this->EntityOffset();
+          if (!_f(gzEntity, &std::get<Is>(arrays)[i]...)) {
+            break;
+          }
+        }
+      };
+      helper(std::index_sequence_for<ComponentTypeTs...>{});
     }
-  }
+  });
 }
 
+/*
 //////////////////////////////////////////////////
 template <class Function, class... ComponentTypeTs>
 void FlecsComponentManager::ForEach(Function _f,
@@ -575,14 +572,19 @@ detail::View *FlecsComponentManager::FindView() const
   return static_cast<detail::View *>(baseViewPtr);
 }
 
+*/
 //////////////////////////////////////////////////
 template<typename ComponentTypeT>
 bool FlecsComponentManager::RemoveComponent(Entity _entity)
 {
-  const auto typeId = ComponentTypeT::typeId;
-  return this->RemoveComponent(_entity, typeId);
+  if (!this->HasEntity(_entity))
+    return false;
+  flecs::entity e = this->world.entity(_entity + this->EntityOffset());
+  if (!e.has<ComponentTypeT>())
+    return false;
+  e.remove<ComponentTypeT>();
+  return true;
 }
-*/
 }
 }
 }

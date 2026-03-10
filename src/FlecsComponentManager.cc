@@ -52,46 +52,16 @@ using namespace sim;
 
 struct SimEntity { };
 
-// TODO(luca) we need to do this at registration so in a macro but we also
-// should try to not make flecs part of the public API
-struct FlecsGzBridge {
-public:
-  using SyncFunc = std::function<void(flecs::entity&, const gz::sim::components::BaseComponent*)>;
-
-  template <typename T>
-    void RegisterType(flecs::world &_world) {
-      _world.component<T>();
-
-      this->syncMap[T::TypeId] = [](flecs::entity& _e, const gz::sim::components::BaseComponent* _comp) {
-        _e.set<T>({static_cast<const T*>(_comp)->Data()});
-      };
-    }
-
-    bool SyncComponent(const ComponentTypeId _id, flecs::entity _e, const gz::sim::components::BaseComponent* _comp) {
-      const auto it = this->syncMap.find(_id);
-      if (it == this->syncMap.end()) {
-        return false;
-      }
-      it->second(_e, _comp);
-      return true;
-    }
-private:
-  std::unordered_map<ComponentTypeId, SyncFunc> syncMap;
-};
-
 class gz::sim::FlecsComponentManagerPrivate
 {
-  public: flecs::world world;
+  // public: flecs::world world;
 
   // Flecs doesn't start from 0
   public: Entity entityOffset;
 
   // Flecs stores components in entities that might change at runtime
-  public: std::unordered_map<ComponentTypeId, flecs::entity> typeIdToEntity;
+  // public: std::unordered_map<ComponentTypeId, flecs::entity> typeIdToEntity;
 
-  // To deal with registration
-  // TODO(luca) Move into factory
-  public: FlecsGzBridge bridge;
   /*
   /// \brief Implementation of the CreateEntity function, which takes a specific
   /// entity as input.
@@ -181,6 +151,7 @@ class gz::sim::FlecsComponentManagerPrivate
   /// parenting.
   public: EntityGraph entities;
 
+          */
   /// \brief Components that have been changed through a periodic change.
   /// The key is the type of component which has changed, and the value is the
   /// entities that had this type of component changed.
@@ -192,12 +163,15 @@ class gz::sim::FlecsComponentManagerPrivate
   /// entities that had this type of component changed.
   public: std::unordered_map<ComponentTypeId, std::unordered_set<Entity>>
             oneTimeChangedComponents;
+          /*
 
   /// \brief Entities that have just been created
   public: std::unordered_set<Entity> newlyCreatedEntities;
 
+  */
   /// \brief Entities that need to be removed.
   public: std::unordered_set<Entity> toRemoveEntities;
+          /*
 
   /// \brief Entities that have components newly modified
   /// (created/modified/removed) but are not entities that have been
@@ -205,14 +179,18 @@ class gz::sim::FlecsComponentManagerPrivate
   /// This is used for the ChangedState functions
   public: std::unordered_set<Entity> modifiedComponents;
 
+  */
   /// \brief Flag that indicates if all entities should be removed.
   public: bool removeAllEntities{false};
+          /*
 
   /// \brief A mutex to protect newly created entities.
   public: std::mutex entityCreatedMutex;
 
+  */
   /// \brief A mutex to protect entity remove.
   public: std::mutex entityRemoveMutex;
+          /*
 
   /// \brief A mutex to protect from concurrent writes to views
   public: mutable std::mutex viewsMutex;
@@ -332,9 +310,9 @@ class gz::sim::FlecsComponentManagerPrivate
   public: std::unordered_map<Entity, std::pair<Entity, Entity>>
           clonedToOriginalJointLinks;
 
+  */
   /// \brief Set of entities that are prevented from removal.
   public: std::unordered_set<Entity> pinnedEntities;
-  */
 };
 
 //////////////////////////////////////////////////
@@ -342,11 +320,14 @@ FlecsComponentManager::FlecsComponentManager()
   : dataPtr(new FlecsComponentManagerPrivate)
 {
   // A mock entity to get the offset
-  dataPtr->entityOffset = dataPtr->world.entity().id();
+  dataPtr->entityOffset = world.entity().id();
 }
 
 //////////////////////////////////////////////////
-FlecsComponentManager::~FlecsComponentManager() = default;
+FlecsComponentManager::~FlecsComponentManager()
+{
+  components::Factory::Instance()->ClearTypeIdMap();
+}
 
 /*
 //////////////////////////////////////////////////
@@ -390,13 +371,13 @@ void FlecsComponentManagerPrivate::CopyFrom(
 //////////////////////////////////////////////////
 size_t FlecsComponentManager::EntityCount() const
 {
-  return this->dataPtr->world.count<SimEntity>();
+  return this->world.count<SimEntity>();
 }
 
 /////////////////////////////////////////////////
 Entity FlecsComponentManager::CreateEntity()
 {
-  return this->dataPtr->world.entity().add<SimEntity>().id() - this->dataPtr->entityOffset;
+  return this->world.entity().add<SimEntity>().id() - this->dataPtr->entityOffset;
 }
 
 /*
@@ -812,6 +793,7 @@ void FlecsComponentManager::RequestRemoveEntity(Entity _entity,
   }
 }
 
+*/
 /////////////////////////////////////////////////
 void FlecsComponentManager::RequestRemoveEntities()
 {
@@ -821,10 +803,10 @@ void FlecsComponentManager::RequestRemoveEntities()
       std::lock_guard<std::mutex> lock(this->dataPtr->entityRemoveMutex);
       this->dataPtr->removeAllEntities = true;
     }
-    this->RebuildViews();
   }
   else
   {
+    /*
     std::unordered_set<Entity> tmpToRemoveEntities;
 
     // Store the to-be-removed entities in a temporary set so we can
@@ -852,6 +834,7 @@ void FlecsComponentManager::RequestRemoveEntities()
         view.second.first->MarkEntityToRemove(removedEntity);
       }
     }
+    */
   }
 }
 
@@ -865,17 +848,9 @@ void FlecsComponentManager::ProcessRemoveEntityRequests()
   {
     GZ_PROFILE("RemoveAll");
     this->dataPtr->removeAllEntities = false;
-    this->dataPtr->entities = EntityGraph();
+    this->world.delete_with<SimEntity>();
     this->dataPtr->toRemoveEntities.clear();
-    this->dataPtr->componentsMarkedAsRemoved.clear();
-
-    // reset the entity component storage
-    this->dataPtr->componentStorage.clear();
-    this->dataPtr->componentTypeIndex.clear();
-    this->dataPtr->componentTypeIndexDirty = true;
-
-    // All views are now invalid.
-    this->dataPtr->views.clear();
+    // this->dataPtr->componentsMarkedAsRemoved.clear();
   }
   else
   {
@@ -886,56 +861,39 @@ void FlecsComponentManager::ProcessRemoveEntityRequests()
       // Make sure the entity exists and is not removed.
       if (!this->HasEntity(entity))
         continue;
+      world.entity(entity + this->EntityOffset()).destruct();
 
-      // Remove from graph
-      this->dataPtr->entities.RemoveVertex(entity);
-
-      this->dataPtr->componentsMarkedAsRemoved.erase(entity);
-      this->dataPtr->componentStorage.erase(entity);
-      this->dataPtr->componentTypeIndex.erase(entity);
-      this->dataPtr->componentTypeIndexDirty = true;
-
-      // Remove the entity from views.
-      for (auto &view : this->dataPtr->views)
-      {
-        view.second.first->RemoveEntity(entity);
-      }
+      // this->dataPtr->componentsMarkedAsRemoved.erase(entity);
     }
     // Clear the set of entities to remove.
     this->dataPtr->toRemoveEntities.clear();
   }
-
-  // Reset descendants cache
-  this->dataPtr->descendantCache.clear();
 }
 
-*/
 /////////////////////////////////////////////////
 bool FlecsComponentManager::RemoveComponent(
     const Entity _entity, const ComponentTypeId &_typeId)
 {
   GZ_PROFILE("FlecsComponentManager::RemoveComponent");
-  const auto entity = _entity - this->dataPtr->entityOffset;
+  const auto entity = _entity + this->dataPtr->entityOffset;
   // TODO(luca) consider just converting the typeId to a string and using it
   // as a name for internal flecs lookup
-  const auto flecsEntityIt = this->dataPtr->typeIdToEntity.find(_typeId);
-  if (flecsEntityIt == this->dataPtr->typeIdToEntity.end())
-  {
-    // Component was never registered
+  const auto compEntity = components::Factory::Instance()->TypeIdToEntity(_typeId);
+  if (compEntity == std::nullopt)
     return false;
-  }
-  auto e = this->dataPtr->world.entity(entity);
+
+  auto e = this->world.entity(entity);
   if (!e.is_alive())
   {
     // Entity doesn't exist
     return false;
   }
-  if (!e.has(flecsEntityIt->second))
+  if (!e.has(*compEntity))
   {
     // Component was not present
     return false;
   }
-  e.remove(flecsEntityIt->second);
+  e.remove(*compEntity);
   /*
 
   auto oneTimeIter = this->dataPtr->oneTimeChangedComponents.find(_typeId);
@@ -976,7 +934,6 @@ bool FlecsComponentManager::RemoveComponent(
   return true;
 }
 
-/*
 /////////////////////////////////////////////////
 bool FlecsComponentManager::EntityHasComponentType(const Entity _entity,
     const ComponentTypeId &_typeId) const
@@ -984,11 +941,14 @@ bool FlecsComponentManager::EntityHasComponentType(const Entity _entity,
   if (!this->HasEntity(_entity))
     return false;
 
-  auto comp = this->ComponentImplementation(_entity, _typeId);
+  const auto e = components::Factory::Instance()->TypeIdToEntity(_typeId);
+  if (e == std::nullopt)
+    return false;
 
-  return comp != nullptr;
+  return this->world.entity(_entity + this->dataPtr->entityOffset).has(*e);
 }
 
+/*
 /////////////////////////////////////////////////
 bool FlecsComponentManager::IsNewEntity(const Entity _entity) const
 {
@@ -1009,25 +969,17 @@ bool FlecsComponentManager::IsMarkedForRemoval(const Entity _entity) const
          this->dataPtr->toRemoveEntities.end();
 }
 
+*/
 /////////////////////////////////////////////////
 ComponentState FlecsComponentManager::ComponentState(const Entity _entity,
     const ComponentTypeId _typeId) const
 {
   auto result = ComponentState::NoChange;
 
-  auto ctIter = this->dataPtr->componentTypeIndex.find(_entity);
-
-  if (ctIter == this->dataPtr->componentTypeIndex.end())
+  if (!this->EntityHasComponentType(_entity, _typeId))
     return result;
 
-  auto typeIter = ctIter->second.find(_typeId);
-  if (typeIter == ctIter->second.end() ||
-      this->dataPtr->ComponentMarkedAsRemoved(_entity, _typeId))
-    return result;
-
-  auto typeId = typeIter->first;
-
-  auto oneTimeIter = this->dataPtr->oneTimeChangedComponents.find(typeId);
+  auto oneTimeIter = this->dataPtr->oneTimeChangedComponents.find(_typeId);
   if (oneTimeIter != this->dataPtr->oneTimeChangedComponents.end() &&
       oneTimeIter->second.find(_entity) != oneTimeIter->second.end())
   {
@@ -1036,7 +988,7 @@ ComponentState FlecsComponentManager::ComponentState(const Entity _entity,
   else
   {
     auto periodicIter =
-      this->dataPtr->periodicChangedComponents.find(typeId);
+      this->dataPtr->periodicChangedComponents.find(_typeId);
     if (periodicIter != this->dataPtr->periodicChangedComponents.end() &&
         periodicIter->second.find(_entity) != periodicIter->second.end())
       result = ComponentState::PeriodicChange;
@@ -1044,6 +996,7 @@ ComponentState FlecsComponentManager::ComponentState(const Entity _entity,
 
   return result;
 }
+/*
 
 /////////////////////////////////////////////////
 bool FlecsComponentManager::HasNewEntities() const
@@ -1052,6 +1005,7 @@ bool FlecsComponentManager::HasNewEntities() const
   return !this->dataPtr->newlyCreatedEntities.empty();
 }
 
+*/
 /////////////////////////////////////////////////
 bool FlecsComponentManager::HasEntitiesMarkedForRemoval() const
 {
@@ -1059,6 +1013,7 @@ bool FlecsComponentManager::HasEntitiesMarkedForRemoval() const
   return this->dataPtr->removeAllEntities ||
       !this->dataPtr->toRemoveEntities.empty();
 }
+/*
 
 /////////////////////////////////////////////////
 bool FlecsComponentManager::HasOneTimeComponentChanges() const
@@ -1125,8 +1080,8 @@ void FlecsComponentManager::UpdatePeriodicChangeCache(
 bool FlecsComponentManager::HasEntity(const Entity _entity) const
 {
   // We have an empty entity to mark the entity offset that could be subject to change
-  const Entity offset = _entity + this->dataPtr->entityOffset;
-  return this->dataPtr->world.entity(offset).is_alive();
+  flecs::entity e = this->world.entity(_entity + this->dataPtr->entityOffset);
+  return e.is_alive() && e.has<SimEntity>();
 }
 
 /*
@@ -1195,12 +1150,9 @@ bool FlecsComponentManager::CreateComponentImplementation(
   bool updateData = true;
 
   // TODO(luca) this is duplicated with HasComponentType
-  const auto flecsEntityIt = this->dataPtr->typeIdToEntity.find(_componentTypeId);
-  if (flecsEntityIt == this->dataPtr->typeIdToEntity.end())
-  {
-    // Component was never registered
+  const auto compEntity = components::Factory::Instance()->TypeIdToEntity(_componentTypeId);
+  if (compEntity == std::nullopt)
     return false;
-  }
   /*
 
   this->dataPtr->AddModifiedComponent(_entity);
@@ -1231,10 +1183,10 @@ bool FlecsComponentManager::CreateComponentImplementation(
 
   const auto entity = _entity + this->dataPtr->entityOffset;
   // If entity has never had a component of this type
-  if (!this->dataPtr->world.entity(entity).has(flecsEntityIt->second))
+  if (!this->world.entity(entity).has(*compEntity))
   {
   /*
-    this->dataPtr->world.entity(entity).add(newComp);
+    this->world.entity(entity).add(newComp);
     updateData = false;
   */
   }
@@ -1368,13 +1320,10 @@ components::BaseComponent *FlecsComponentManager::ComponentImplementation(
 bool FlecsComponentManager::HasComponentType(
     const ComponentTypeId _typeId) const
 {
-  const auto flecsEntityIt = this->dataPtr->typeIdToEntity.find(_typeId);
-  if (flecsEntityIt == this->dataPtr->typeIdToEntity.end())
-  {
-    // Component was never registered
+  const auto compEntity = components::Factory::Instance()->TypeIdToEntity(_typeId);
+  if (compEntity == std::nullopt)
     return false;
-  }
-  return this->dataPtr->world.count(flecsEntityIt->second) > 0;
+  return this->world.entity(*compEntity).is_alive();
 }
 /*
 
@@ -2115,19 +2064,14 @@ void FlecsComponentManager::SetAllComponentsUnchanged()
   this->dataPtr->modifiedComponents.clear();
 }
 
+*/
 /////////////////////////////////////////////////
 void FlecsComponentManager::SetChanged(
     const Entity _entity, const ComponentTypeId _type,
     sim::ComponentState _c)
 {
   // make sure _entity exists
-  auto ecIter = this->dataPtr->componentTypeIndex.find(_entity);
-  if (ecIter == this->dataPtr->componentTypeIndex.end())
-    return;
-
-  // make sure the entity has a component of type _type
-  if (ecIter->second.find(_type) == ecIter->second.end() ||
-      this->dataPtr->ComponentMarkedAsRemoved(_entity, _type))
+  if (!this->HasEntity(_entity))
     return;
 
   if (_c == ComponentState::PeriodicChange)
@@ -2158,26 +2102,39 @@ void FlecsComponentManager::SetChanged(
     return;
   }
 
-  this->dataPtr->AddModifiedComponent(_entity);
+  // this->dataPtr->AddModifiedComponent(_entity);
 }
 
 /////////////////////////////////////////////////
 std::unordered_set<ComponentTypeId> FlecsComponentManager::ComponentTypes(
     const Entity _entity) const
 {
-  auto it = this->dataPtr->componentTypeIndex.find(_entity);
-  if (it == this->dataPtr->componentTypeIndex.end())
+  if (!this->HasEntity(_entity))
     return {};
+  const auto entity = _entity + this->EntityOffset();
 
   std::unordered_set<ComponentTypeId> result;
+  this->world.entity(entity).each([&](flecs::id _id) {
+    // TODO(luca) remove this and check for relationship if we use ChildOf
+    if (!_id.is_entity())
+      return;
+    const auto e = components::Factory::Instance()->EntityToTypeId(_id.entity());
+    if (e.has_value()) {
+      result.insert(e.value());
+    }
+  });
+
+  /*
   for (const auto &type : it->second)
   {
     if (!this->dataPtr->ComponentMarkedAsRemoved(_entity, type.first))
       result.insert(type.first);
   }
+  */
 
   return result;
 }
+/*
 
 /////////////////////////////////////////////////
 void FlecsComponentManager::SetEntityCreateOffset(uint64_t _offset)
@@ -2427,3 +2384,9 @@ std::optional<Entity> FlecsComponentManager::EntityByName(
   return entity;
 }
 */
+
+/////////////////////////////////////////////////
+Entity FlecsComponentManager::EntityOffset() const
+{
+  return this->dataPtr->entityOffset;
+}

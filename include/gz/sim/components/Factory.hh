@@ -27,6 +27,17 @@
 #include <utility>
 #include <vector>
 
+// TODO(luca) move to a detail folder?
+#ifdef emit
+  // Conflict because qt also defines emit
+  #pragma push_macro("emit")
+  #undef emit
+  #include <flecs.h>
+  #pragma pop_macro("emit")
+#else
+  #include <flecs.h>
+#endif
+
 #include <gz/common/SingletonT.hh>
 #include <gz/common/Util.hh>
 #include <gz/sim/components/Component.hh>
@@ -197,13 +208,66 @@ namespace components
   /// \brief A factory that generates a component based on a string type.
   class Factory
   {
-#ifdef FLECS_BRIDGE
-    public: using SyncFunc = std::function<void(flecs::entity&, const BaseComponent*)>;
-#endif
     public: Factory(Factory &) = delete;
     public: Factory(const Factory &) = delete;
     public: void operator=(const Factory &) = delete;
     public: void operator=(Factory &&) = delete;
+
+    public:
+      using SyncFunc = std::function<void(flecs::entity&, const gz::sim::components::BaseComponent*)>;
+
+      template <typename T>
+      void RegisterType() {
+        this->syncMap[T::TypeId] = [this](flecs::entity& _e, const gz::sim::components::BaseComponent* _comp) {
+          _e.set<T>({static_cast<const T*>(_comp)->Data()});
+          this->SyncTypeIdMap<T>(_e.world());
+        };
+      }
+
+      template <typename T>
+      void SyncTypeIdMap(flecs::world& _world) {
+        flecs::entity compEntity = _world.component<T>();
+        this->typeIdToEntity.insert({{T::typeId, compEntity}});
+        this->entityToTypeId.insert({{compEntity.id(), T::typeId}});
+      }
+
+      // TODO(luca) call this on ECM destruction, or maybe there is a way to register a hook?
+      // Could also consider mapping to a std::optional<flecs::entity> to keep memory of the fact that
+      // the component _was_ registered but the entity is not valid anymore
+      // Or perhaps register all types in the world at ECM creation?
+      void ClearTypeIdMap() {
+        this->typeIdToEntity.clear();
+        this->entityToTypeId.clear();
+      }
+
+      // Returns the entity of the synced components
+      bool SyncComponent(flecs::entity _e, const ComponentTypeId _id, const gz::sim::components::BaseComponent* _comp) {
+        const auto it = this->syncMap.find(_id);
+        if (it == this->syncMap.end()) {
+          return false;
+        }
+        it->second(_e, _comp);
+        return true;
+      }
+
+      std::optional<flecs::entity> TypeIdToEntity(const ComponentTypeId _id) {
+        const auto flecsEntityIt = this->typeIdToEntity.find(_id);
+        if (flecsEntityIt == this->typeIdToEntity.end())
+          return std::nullopt;
+        return flecsEntityIt->second;
+      }
+
+      std::optional<ComponentTypeId> EntityToTypeId(flecs::entity_t _e) {
+        const auto typeIdIt = this->entityToTypeId.find(_e);
+        if (typeIdIt == this->entityToTypeId.end())
+          return std::nullopt;
+        return typeIdIt->second;
+      }
+
+    private:
+      std::unordered_map<ComponentTypeId, SyncFunc> syncMap;
+      std::unordered_map<ComponentTypeId, flecs::entity> typeIdToEntity;
+      std::unordered_map<flecs::entity_t, ComponentTypeId> entityToTypeId;
 
     /// \brief Get an instance of the singleton
     public: GZ_SIM_VISIBLE static Factory *Instance();

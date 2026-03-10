@@ -20,6 +20,8 @@
 #include <gz/msgs/serialized.pb.h>
 #include <gz/msgs/serialized_map.pb.h>
 
+#include <flecs.h>
+
 #include <map>
 #include <memory>
 #include <optional>
@@ -165,12 +167,12 @@ namespace gz
       /// \sa void PinEntity(const Entity, bool)
       public: void UnpinAllEntities();
 
+      */
       /// \brief Request to remove all entities. This will insert the request
       /// into a queue. The queue is processed toward the end of a simulation
       /// update step.
       public: void RequestRemoveEntities();
 
-      */
       /// \brief Get whether an Entity exists.
       /// \param[in] _entity Entity to confirm.
       /// \return True if the Entity exists.
@@ -202,7 +204,6 @@ namespace gz
       /// \param[in] _typeId ID of the component type to check.
       /// \return True if the provided _typeId has been created.
       public: bool HasComponentType(const ComponentTypeId _typeId) const;
-              /*
 
       /// \brief Check whether an entity has a specific component type.
       /// \param[in] _entity The entity to check.
@@ -211,6 +212,7 @@ namespace gz
       /// with the provided type.
       public: bool EntityHasComponentType(const Entity _entity,
                   const ComponentTypeId &_typeId) const;
+              /*
 
       /// \brief Get whether an entity has all the given component types.
       /// \param[in] _entity The entity to check.
@@ -268,7 +270,6 @@ namespace gz
       /// Entity, or nullptr if the component could not be found.
       public: template<typename ComponentTypeT>
               ComponentTypeT *Component(const Entity _entity);
-      /*
 
       /// \brief Get a mutable component assigned to an entity based on a
       /// component type. If the component doesn't exist, create it and
@@ -314,6 +315,7 @@ namespace gz
       /// \return All the component type IDs.
       public: std::unordered_set<ComponentTypeId> ComponentTypes(
           Entity _entity) const;
+              /*
 
       /// \brief Get an entity which matches the value of all the given
       /// components. For example, the following will return the entity which
@@ -365,9 +367,11 @@ namespace gz
               std::vector<Entity> ChildrenByComponents(Entity _parent,
                    const ComponentTypeTs &..._desiredComponents) const;
 
+                   */
       /// why is this required?
       private: template <typename T>
                struct identity;  // NOLINT
+                                 /*
 
       /// \brief Helper function for cloning an entity and its children (this
       /// includes cloning components attached to these entities). This method
@@ -418,6 +422,7 @@ namespace gz
                   bool(const Entity &_entity,
                        ComponentTypeTs *...)>>::type _f);
 
+              */
       /// \brief Get all entities which contain given component types, as well
       /// as the components. Note that an entity marked for removal (but not
       /// processed yet) will be included in the list of entities iterated by
@@ -452,6 +457,7 @@ namespace gz
                   bool(const Entity &_entity,
                        ComponentTypeTs *...)>>::type _f);
 
+              /*
       /// \brief Call a function for each parameter in a pack.
       /// \param[in] _f Function to be called.
       /// \param[in] _components Parameters which should be passed to the
@@ -552,9 +558,11 @@ namespace gz
       /// \return True if there are new entities.
       public: bool HasNewEntities() const;
 
+              */
       /// \brief Get whether there are any entities marked to be removed.
       /// \return True if there are entities marked to be removed.
       public: bool HasEntitiesMarkedForRemoval() const;
+              /*
 
       /// \brief Get whether there are one-time component changes. These changes
       /// do not happen frequently and should be processed immediately.
@@ -648,6 +656,7 @@ namespace gz
       /// \param[in] _stateMsg Message containing state to be set.
       public: void SetState(const msgs::SerializedStateMap &_stateMsg);
 
+              */
       /// \brief Set the changed state of a component.
       /// \param[in] _entity The entity.
       /// \param[in] _type Type of the component.
@@ -662,6 +671,7 @@ namespace gz
       /// \return Component's current state
       public: sim::ComponentState ComponentState(const Entity _entity,
           const ComponentTypeId _typeId) const;
+              /*
 
       /// \brief All future entities will have an id that starts at _offset.
       /// This can be used to avoid entity id collisions, such as during log
@@ -698,9 +708,11 @@ namespace gz
       /// RemoveComponent doesn't make the list grow indefinitely.
       public: void ClearRemovedComponents();
 
+      */
       /// \brief Process all entity remove requests. This will remove
       /// entities and their components.
       public: void ProcessRemoveEntityRequests();
+              /*
 
       /// \brief Mark all components as not changed.
       public: void SetAllComponentsUnchanged();
@@ -807,6 +819,12 @@ namespace gz
       */
       /// \brief Private data pointer.
       private: std::unique_ptr<FlecsComponentManagerPrivate> dataPtr;
+
+      // TODO(luca) can we put this in the dataPtr? Tough because a templated function needs to access it to operate on components
+      private: flecs::world world;
+
+      /// \brief Gets the entity offset to apply to entity functions
+      private: Entity EntityOffset() const;
       /*
 
       /// \brief Add an entity and its components to a serialized state message.
