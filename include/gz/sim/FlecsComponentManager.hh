@@ -122,7 +122,6 @@ namespace gz
       /// \brief Get the number of entities on the server.
       /// \return Entity count.
       public: size_t EntityCount() const;
-              /*
 
       /// \brief Request an entity deletion. This will insert the request
       /// into a queue. The queue is processed toward the end of a simulation
@@ -137,6 +136,7 @@ namespace gz
       /// entities. True by default.
       public: void RequestRemoveEntity(const Entity _entity,
           bool _recursive = true);
+              /*
 
       /// \brief Prevent an entity and optionally its children from
       /// being removed.

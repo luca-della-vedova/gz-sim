@@ -358,48 +358,7 @@ bool applyEach(const FuncT &_f, const Entity &_entity, flecs::iter &_it,
                std::size_t _row, std::index_sequence<Is...>)
 {
   return _f(_entity,
-            static_cast<ComponentTypeTs *>(_it.field_at(_row, Is))...);
-}
-
-/// \brief Helper template to call a callback function with each of the
-/// components in the _data tuple expanded as arguments to the callback
-/// function.
-/// \tparam ComponentTypeTs The actual types of each of the components.
-/// \tparam FuncT The type of the callback function.
-/// \tparam TupleT The tuple type.
-/// \tparam Is Index sequence that will be used to iterate through the tuple
-/// _data.
-/// \param[in] _f The callback function
-/// \param[in] _entity The entity associated with the components.
-/// \param[in] _data A tuple of component pointers that will be expanded to
-/// become the arguments of the callback function _f.
-/// \return The value returned by the function _f.
-template <typename... ComponentTypeTs, typename FuncT, typename TupleT,
-          std::size_t... Is>
-constexpr bool applyFunctionImpl(const FuncT &_f, const Entity &_entity,
-                       const TupleT &_data,
-                       std::index_sequence<Is...>)
-{
-  return _f(_entity, static_cast<ComponentTypeTs *>(std::get<Is>(_data))...);
-}
-
-/// \brief Helper template to call a callback function with each of the
-/// components in the _data tuple expanded as arguments to the callback
-/// function.
-/// \tparam ComponentTypeTs The actual types of each of the components.
-/// \tparam FuncT The type of the callback function.
-/// \tparam TupleT The tuple type.
-/// \param[in] _f The callback function
-/// \param[in] _entity The entity associated with the components.
-/// \param[in] _data A tuple of component pointers that will be expanded to
-/// become the arguments of the callback function _f.
-/// \return The value returned by the function _f.
-template <typename... ComponentTypeTs, typename FuncT, typename TupleT>
-constexpr bool applyFunction(const FuncT &_f, const Entity &_entity,
-                   const TupleT &_data)
-{
-  return applyFunctionImpl<ComponentTypeTs...>(
-      _f, _entity, _data, std::index_sequence_for<ComponentTypeTs...>{});
+            static_cast<ComponentTypeTs *>(_it.field_at(Is, _row))...);
 }
 }  // namespace detail
 

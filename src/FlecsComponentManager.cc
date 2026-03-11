@@ -69,13 +69,17 @@ class gz::sim::FlecsComponentManagerPrivate
   /// \return Created entity, which should match the input.
   public: Entity CreateEntityImplementation(Entity _entity);
 
+  */
   /// \brief Recursively insert an entity and all its descendants into a given
   /// set.
+  /// \param[in] _world The flecs world to make the search on.
   /// \param[in] _entity Entity to be inserted.
   /// \param[in, out] _set Set to be filled.
-  public: void InsertEntityRecursive(Entity _entity,
+  public: void InsertEntityRecursive(flecs::world &world,
+      Entity _entity,
       std::unordered_set<Entity> &_set);
 
+          /*
   /// \brief Recursively erase an entity and all its descendants from a given
   /// set.
   /// \param[in] _entity Entity to be erased.
@@ -704,17 +708,24 @@ void FlecsComponentManager::ClearRemovedComponents()
   this->dataPtr->removedComponents.clear();
 }
 
+*/
 /////////////////////////////////////////////////
-void FlecsComponentManagerPrivate::InsertEntityRecursive(Entity _entity,
+void FlecsComponentManagerPrivate::InsertEntityRecursive(
+    flecs::world &world,
+    Entity _entity,
     std::unordered_set<Entity> &_set)
 {
-  for (const auto &vertex : this->entities.AdjacentsFrom(_entity))
-  {
-    this->InsertEntityRecursive(vertex.first, _set);
-  }
   _set.insert(_entity);
+  flecs::query<SimEntity> q = world.query_builder<SimEntity>()
+    .with(flecs::ChildOf, _entity + this->entityOffset).up(flecs::ChildOf)
+    .build();
+
+  q.each([&_set, this](flecs::entity e, const SimEntity&) {
+    _set.insert(e.id() - this->entityOffset);
+  });
 }
 
+/*
 /////////////////////////////////////////////////
 void FlecsComponentManagerPrivate::EraseEntityRecursive(Entity _entity,
     std::unordered_set<Entity> &_set)
@@ -726,6 +737,7 @@ void FlecsComponentManagerPrivate::EraseEntityRecursive(Entity _entity,
   _set.erase(_entity);
 }
 
+*/
 /////////////////////////////////////////////////
 void FlecsComponentManager::RequestRemoveEntity(Entity _entity,
     bool _recursive)
@@ -739,7 +751,7 @@ void FlecsComponentManager::RequestRemoveEntity(Entity _entity,
   }
   else
   {
-    this->dataPtr->InsertEntityRecursive(_entity, tmpToRemoveEntities);
+    this->dataPtr->InsertEntityRecursive(this->world, _entity, tmpToRemoveEntities);
 
     // remove detachable joint entities that are connected to
     // any of the entities to be removed
@@ -784,16 +796,9 @@ void FlecsComponentManager::RequestRemoveEntity(Entity _entity,
                                           tmpToRemoveEntities.end());
   }
 
-  for (const auto &removedEntity : tmpToRemoveEntities)
-  {
-    for (auto &view : this->dataPtr->views)
-    {
-      view.second.first->MarkEntityToRemove(removedEntity);
-    }
-  }
+  // TODO(luca) Add a disabled component
 }
 
-*/
 /////////////////////////////////////////////////
 void FlecsComponentManager::RequestRemoveEntities()
 {
@@ -848,20 +853,27 @@ void FlecsComponentManager::ProcessRemoveEntityRequests()
   {
     GZ_PROFILE("RemoveAll");
     this->dataPtr->removeAllEntities = false;
-    this->world.delete_with<SimEntity>();
+    this->world.query<SimEntity>().each([](flecs::entity e, const SimEntity&) {
+        // Just remove all components and disable it.
+        e.clear();
+        e.disable();
+    });
     this->dataPtr->toRemoveEntities.clear();
     // this->dataPtr->componentsMarkedAsRemoved.clear();
   }
   else
   {
     GZ_PROFILE("Remove");
+    std::cerr << "Removing entities" << std::endl;
     // Otherwise iterate through the list of entities to remove.
     for (const Entity entity : this->dataPtr->toRemoveEntities)
     {
+      std::cerr << "Removing entity " << entity << std::endl;
       // Make sure the entity exists and is not removed.
       if (!this->HasEntity(entity))
         continue;
-      world.entity(entity + this->EntityOffset()).destruct();
+      world.entity(entity + this->EntityOffset()).clear();
+      world.entity(entity + this->EntityOffset()).disable();
 
       // this->dataPtr->componentsMarkedAsRemoved.erase(entity);
     }
@@ -1081,7 +1093,7 @@ bool FlecsComponentManager::HasEntity(const Entity _entity) const
 {
   // We have an empty entity to mark the entity offset that could be subject to change
   flecs::entity e = this->world.entity(_entity + this->dataPtr->entityOffset);
-  return e.is_alive() && e.has<SimEntity>();
+  return e.is_alive() && e.has<SimEntity>() && e.enabled();
 }
 
 /*

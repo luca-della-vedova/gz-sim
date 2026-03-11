@@ -565,7 +565,6 @@ TEST_P(FlecsComponentManagerFixture,
   }
 }
 
-/*
 //////////////////////////////////////////////////
 TEST_P(FlecsComponentManagerFixture,
        GZ_UTILS_TEST_DISABLED_ON_WIN32(ViewsAddComponents))
@@ -942,6 +941,7 @@ TEST_P(FlecsComponentManagerFixture, RemoveEntity)
   EXPECT_EQ(0u, manager.EntityCount());
 }
 
+/*
 //////////////////////////////////////////////////
 TEST_P(FlecsComponentManagerFixture,
        GZ_UTILS_TEST_DISABLED_ON_WIN32(ViewsRemoveEntity))
