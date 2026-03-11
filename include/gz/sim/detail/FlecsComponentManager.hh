@@ -342,41 +342,61 @@ void FlecsComponentManager::EachNoCache(typename identity<std::function<
 namespace detail
 {
 /// \brief Helper template to call a callback function with each of the
-/// components in the _data vector expanded as arguments to the callback
+/// components in the flecs iterator expanded as arguments to the callback
 /// function.
 /// \tparam ComponentTypeTs The actual types of each of the components.
 /// \tparam FuncT The type of the callback function.
-/// \tparam BaseComponentT Either "BaseComponent" or "const BaseComponent"
-/// \tparam Is Index sequence that will be used to iterate through the vector
-/// _data.
+/// \tparam Is Index sequence that will be used to iterate through the flecs
+/// iterator fields.
 /// \param[in] _f The callback function
 /// \param[in] _entity The entity associated with the components.
-/// \param[in] _data A vector of component pointers that will be expanded to
-/// become the arguments of the callback function _f.
-/// \return The value of return by the function _f.
-template <typename... ComponentTypeTs, typename FuncT, typename BaseComponentT,
-          std::size_t... Is>
-constexpr bool applyFunctionImpl(const FuncT &_f, const Entity &_entity,
-                       const std::vector<BaseComponentT *> &_data,
-                       std::index_sequence<Is...>)
+/// \param[in] _it The flecs iterator.
+/// \param[in] _row The row index in the iterator.
+/// \return The value returned by the function _f.
+template <typename... ComponentTypeTs, typename FuncT, std::size_t... Is>
+bool applyEach(const FuncT &_f, const Entity &_entity, flecs::iter &_it,
+               std::size_t _row, std::index_sequence<Is...>)
 {
-  return _f(_entity, static_cast<ComponentTypeTs *>(_data[Is])...);
+  return _f(_entity,
+            static_cast<ComponentTypeTs *>(_it.field_at(_row, Is))...);
 }
 
 /// \brief Helper template to call a callback function with each of the
-/// components in the _data vector expanded as arguments to the callback
+/// components in the _data tuple expanded as arguments to the callback
 /// function.
 /// \tparam ComponentTypeTs The actual types of each of the components.
 /// \tparam FuncT The type of the callback function.
-/// \tparam BaseComponentT Either "BaseComponent" or "const BaseComponent"
+/// \tparam TupleT The tuple type.
+/// \tparam Is Index sequence that will be used to iterate through the tuple
+/// _data.
 /// \param[in] _f The callback function
 /// \param[in] _entity The entity associated with the components.
-/// \param[in] _data A vector of component pointers that will be expanded to
+/// \param[in] _data A tuple of component pointers that will be expanded to
 /// become the arguments of the callback function _f.
-/// \return The value of return by the function _f.
-template <typename... ComponentTypeTs, typename FuncT, typename BaseComponentT>
+/// \return The value returned by the function _f.
+template <typename... ComponentTypeTs, typename FuncT, typename TupleT,
+          std::size_t... Is>
+constexpr bool applyFunctionImpl(const FuncT &_f, const Entity &_entity,
+                       const TupleT &_data,
+                       std::index_sequence<Is...>)
+{
+  return _f(_entity, static_cast<ComponentTypeTs *>(std::get<Is>(_data))...);
+}
+
+/// \brief Helper template to call a callback function with each of the
+/// components in the _data tuple expanded as arguments to the callback
+/// function.
+/// \tparam ComponentTypeTs The actual types of each of the components.
+/// \tparam FuncT The type of the callback function.
+/// \tparam TupleT The tuple type.
+/// \param[in] _f The callback function
+/// \param[in] _entity The entity associated with the components.
+/// \param[in] _data A tuple of component pointers that will be expanded to
+/// become the arguments of the callback function _f.
+/// \return The value returned by the function _f.
+template <typename... ComponentTypeTs, typename FuncT, typename TupleT>
 constexpr bool applyFunction(const FuncT &_f, const Entity &_entity,
-                   const std::vector<BaseComponentT *> &_data)
+                   const TupleT &_data)
 {
   return applyFunctionImpl<ComponentTypeTs...>(
       _f, _entity, _data, std::index_sequence_for<ComponentTypeTs...>{});
@@ -391,17 +411,15 @@ void FlecsComponentManager::Each(typename identity<std::function<
   flecs::query<const ComponentTypeTs...> q = this->world.query<const ComponentTypeTs...>();
   q.run([&](flecs::iter& _it) {
     while (_it.next()) {
-      auto helper = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-        auto arrays = std::make_tuple(_it.field<const ComponentTypeTs>(Is + 1)...);
-        for (auto i : _it) {
-          flecs::entity entity = _it.entity(i);
-          Entity gzEntity = entity.id() - this->EntityOffset();
-          if (!_f(gzEntity, &std::get<Is>(arrays)[i]...)) {
-            break;
-          }
+      for (auto i : _it) {
+        flecs::entity entity = _it.entity(i);
+        Entity gzEntity = entity.id() - this->EntityOffset();
+        if (!detail::applyEach<const ComponentTypeTs...>(
+              _f, gzEntity, _it, i, std::index_sequence_for<ComponentTypeTs...>{}))
+        {
+          return;
         }
-      };
-      helper(std::index_sequence_for<ComponentTypeTs...>{});
+      }
     }
   });
 }
@@ -414,17 +432,15 @@ void FlecsComponentManager::Each(typename identity<std::function<
   flecs::query<ComponentTypeTs...> q = this->world.query<ComponentTypeTs...>();
   q.run([&](flecs::iter& _it) {
     while (_it.next()) {
-      auto helper = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-        auto arrays = std::make_tuple(_it.field<ComponentTypeTs>(Is + 1)...);
-        for (auto i : _it) {
-          flecs::entity entity = _it.entity(i);
-          Entity gzEntity = entity.id() - this->EntityOffset();
-          if (!_f(gzEntity, &std::get<Is>(arrays)[i]...)) {
-            break;
-          }
+      for (auto i : _it) {
+        flecs::entity entity = _it.entity(i);
+        Entity gzEntity = entity.id() - this->EntityOffset();
+        if (!detail::applyEach<ComponentTypeTs...>(
+              _f, gzEntity, _it, i, std::index_sequence_for<ComponentTypeTs...>{}))
+        {
+          return;
         }
-      };
-      helper(std::index_sequence_for<ComponentTypeTs...>{});
+      }
     }
   });
 }
