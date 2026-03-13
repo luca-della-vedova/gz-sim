@@ -2755,7 +2755,6 @@ TEST_P(FlecsComponentManagerFixture,
   }
 }
 
-/*
 /// \brief Helper function for comparing the same type of component across two
 /// different entities
 /// \param[in] _ecm The entity component manager
@@ -3202,6 +3201,7 @@ TEST_P(FlecsComponentManagerFixture,
   EXPECT_EQ(1, foundEntities);
 }
 
+/*
 //////////////////////////////////////////////////
 TEST_P(FlecsComponentManagerFixture, CopyEcm)
 {

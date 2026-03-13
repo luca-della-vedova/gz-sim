@@ -148,7 +148,6 @@ class gz::sim::FlecsComponentManagerPrivate
   /// removed. False otherwise
   public: bool ComponentMarkedAsRemoved(const Entity _entity,
               const ComponentTypeId _typeId) const;
-          /*
 
   /// \brief Set a cloned joint's parent or child link name.
   /// \param[in] _joint The cloned joint.
@@ -166,6 +165,7 @@ class gz::sim::FlecsComponentManagerPrivate
           bool ClonedJointLinkName(Entity _joint, Entity _originalLink,
               FlecsComponentManager *_ecm);
 
+          /*
   /// \brief All component types that have ever been created.
   public: std::unordered_set<ComponentTypeId> createdCompTypes;
 
@@ -285,6 +285,7 @@ class gz::sim::FlecsComponentManagerPrivate
   /// each thread.
   public: bool componentTypeIndexDirty{true};
 
+          */
   /// \brief During cloning, we populate two maps:
   ///  - map of cloned model entities to the non-cloned model's canonical link
   ///  - map of non-cloned canonical links to the cloned canonical link
@@ -322,10 +323,6 @@ class gz::sim::FlecsComponentManagerPrivate
   public: std::unordered_map<Entity, std::pair<Entity, Entity>>
           clonedToOriginalJointLinks;
 
-  */
-  /// \brief Set of entities that are prevented from removal.
-  public: std::unordered_set<Entity> pinnedEntities;
-
   /// \brief The last entity ID that was allocated.
   public: Entity highestAllocatedEntity{kNullEntity};
 };
@@ -340,6 +337,7 @@ FlecsComponentManager::FlecsComponentManager()
   this->world.component<NewEntity>();
   this->world.component<RemoveEntity>();
   this->world.component<ModifiedComponent>();
+  this->world.component<PinnedEntity>();
   components::Factory::Instance()->RegisterAllToFlecs(this->world,
       this->dataPtr->typeIdToEntity, this->dataPtr->entityToTypeId);
   this->dataPtr->entityOffset = world.entity().id();
@@ -416,7 +414,6 @@ Entity FlecsComponentManagerPrivate::CreateEntityImplementation(flecs::world& wo
   return e.add<SimEntity>().add<NewEntity>().id() - this->entityOffset;
 }
 
-/*
 /////////////////////////////////////////////////
 Entity FlecsComponentManager::Clone(Entity _entity, Entity _parent,
     const std::string &_name, bool _allowRename)
@@ -676,7 +673,6 @@ Entity FlecsComponentManager::CloneImpl(Entity _entity, Entity _parent,
   return clonedEntity;
 }
 
-*/
 /////////////////////////////////////////////////
 void FlecsComponentManager::ClearNewlyCreatedEntities()
 {
@@ -745,8 +741,6 @@ void FlecsComponentManager::RequestRemoveEntity(Entity _entity,
     // remove detachable joint entities that are connected to
     // any of the entities to be removed
     std::unordered_set<Entity> detachableJoints;
-    // TODO(luca) this creates entities so it's commented out
-    /*
     this->Each<components::DetachableJoint>(
         [&](const Entity &_jointEntity,
             const components::DetachableJoint *_jointInfo) -> bool
@@ -760,7 +754,6 @@ void FlecsComponentManager::RequestRemoveEntity(Entity _entity,
             detachableJoints.insert(_jointEntity);
           return true;
         });
-        */
     tmpToRemoveEntities.insert(detachableJoints.begin(),
                                detachableJoints.end());
   }
@@ -771,10 +764,7 @@ void FlecsComponentManager::RequestRemoveEntity(Entity _entity,
 
   for (const auto& e : tmpToRemoveEntities)
   {
-    // TODO(luca) component for pinning entities
-    if (std::find(this->dataPtr->pinnedEntities.begin(),
-                  this->dataPtr->pinnedEntities.end(), e) !=
-               this->dataPtr->pinnedEntities.end())
+    if (this->world.entity(e + this->EntityOffset()).has<PinnedEntity>())
     {
       continue;
     }
@@ -788,7 +778,7 @@ void FlecsComponentManager::RequestRemoveEntities()
 {
   std::lock_guard<std::mutex> lock(this->dataPtr->entityRemoveMutex);
   this->world.defer_begin();
-  this->world.query<SimEntity>().each([](flecs::entity e, const SimEntity&) {
+  this->world.query_builder<SimEntity>().without<PinnedEntity>().each([](flecs::entity e, const SimEntity&) {
     // TODO(luca) check pinning, skip if so
     e.add<RemoveEntity>();
   });
@@ -1077,7 +1067,8 @@ bool FlecsComponentManager::SetParentEntity(const Entity _child,
   if (_parent == kNullEntity)
   {
     const auto currentParent = this->world.entity(_child + this->EntityOffset()).parent();
-    this->world.entity(_child + this->EntityOffset()).remove(flecs::ChildOf, currentParent);
+    // TODO(luca) Fully remove ParentEntity for ChildOf
+    this->world.entity(_child + this->EntityOffset()).remove(flecs::ChildOf, currentParent).remove<components::ParentEntity>();
     return true;
   }
 
@@ -1087,6 +1078,7 @@ bool FlecsComponentManager::SetParentEntity(const Entity _child,
   }
 
   this->world.entity(_child + this->EntityOffset()).child_of(_parent + this->EntityOffset());
+  this->CreateComponent(_child, components::ParentEntity(_parent));
   return true;
 }
 
@@ -1818,7 +1810,6 @@ void FlecsComponentManager::PeriodicStateFromCache(
   }
 }
 
-/*
 //////////////////////////////////////////////////
 void FlecsComponentManager::SetState(
     const msgs::SerializedState &_stateMsg)
@@ -1841,7 +1832,7 @@ void FlecsComponentManager::SetState(
     // Create entity if it doesn't exist
     if (!this->HasEntity(entity))
     {
-      this->dataPtr->CreateEntityImplementation(entity);
+      this->dataPtr->CreateEntityImplementation(this->world, entity);
     }
 
     // Create / remove / update components
@@ -1911,13 +1902,12 @@ void FlecsComponentManager::SetState(
       {
         std::istringstream istr(compMsg.component());
         comp->Deserialize(istr);
-        this->dataPtr->AddModifiedComponent(entity);
+        this->dataPtr->AddModifiedComponent(this->world.entity(entity + this->EntityOffset()));
       }
     }
   }
 }
 
-*/
 //////////////////////////////////////////////////
 void FlecsComponentManager::SetState(
     const msgs::SerializedStateMap &_stateMsg)
@@ -2161,7 +2151,6 @@ bool FlecsComponentManagerPrivate::ComponentMarkedAsRemoved(
 
   return false;
 }
-/*
 
 /////////////////////////////////////////////////
 template<typename ComponentTypeT>
@@ -2214,37 +2203,56 @@ bool FlecsComponentManagerPrivate::ClonedJointLinkName(Entity _joint,
 /////////////////////////////////////////////////
 void FlecsComponentManager::PinEntity(const Entity _entity, bool _recursive)
 {
+  std::unordered_set<Entity> pinnedEntities;
+  if (!this->HasEntity(_entity)) {
+    return;
+  }
   if (_recursive)
   {
-    this->dataPtr->InsertEntityRecursive(_entity,
-        this->dataPtr->pinnedEntities);
+    this->dataPtr->InsertEntityRecursive(this->world, _entity, pinnedEntities);
   }
   else
   {
-    this->dataPtr->pinnedEntities.insert(_entity);
+    pinnedEntities.insert(_entity);
+  }
+  // TODO(luca) consider a templated InsertEntityRecursive that calls a lambda
+  // to perform operations on the entities instead.
+  for (const auto& e : pinnedEntities)
+  {
+    this->world.entity(e + this->EntityOffset()).add<PinnedEntity>();
   }
 }
 
 /////////////////////////////////////////////////
 void FlecsComponentManager::UnpinEntity(const Entity _entity, bool _recursive)
 {
+  std::unordered_set<Entity> pinnedEntities;
+  if (!this->HasEntity(_entity)) {
+    return;
+  }
   if (_recursive)
   {
-    this->dataPtr->EraseEntityRecursive(_entity,
-        this->dataPtr->pinnedEntities);
+    this->dataPtr->InsertEntityRecursive(this->world, _entity, pinnedEntities);
   }
   else
   {
-    this->dataPtr->pinnedEntities.erase(_entity);
+    pinnedEntities.insert(_entity);
+  }
+  // TODO(luca) consider a templated InsertEntityRecursive that calls a lambda
+  // to perform operations on the entities instead.
+  for (const auto& e : pinnedEntities)
+  {
+    this->world.entity(e + this->EntityOffset()).remove<PinnedEntity>();
   }
 }
 
 /////////////////////////////////////////////////
 void FlecsComponentManager::UnpinAllEntities()
 {
-  this->dataPtr->pinnedEntities.clear();
+  this->world.remove_all<PinnedEntity>();
 }
 
+/*
 /////////////////////////////////////////////////
 void FlecsComponentManager::CopyFrom(const FlecsComponentManager &_fromEcm)
 {

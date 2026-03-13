@@ -57,6 +57,8 @@ namespace gz
     // This is used for state change detection and serialization.
     // TODO(luca) consider using actual change detection for this.
     struct ModifiedComponent { };
+    // Marker for entities that are pinned and cannot be removed
+    struct PinnedEntity { };
     inline namespace GZ_SIM_VERSION_NAMESPACE {
     // Forward declarations.
     class GZ_SIM_HIDDEN FlecsComponentManagerPrivate;
@@ -91,7 +93,6 @@ namespace gz
       /// \return An id for the Entity, or kNullEntity on failure.
       public: Entity CreateEntity();
 
-      /*
       /// \brief Clone an entity and its components. If the entity has any child
       /// entities, they will also be cloned.
       /// When cloning entities, the following rules apply:
@@ -127,7 +128,6 @@ namespace gz
       public: Entity Clone(Entity _entity, Entity _parent,
                   const std::string &_name, bool _allowRename);
 
-                  */
       /// \brief Get the number of entities on the server.
       /// \return Entity count.
       public: size_t EntityCount() const;
@@ -145,7 +145,6 @@ namespace gz
       /// entities. True by default.
       public: void RequestRemoveEntity(const Entity _entity,
           bool _recursive = true);
-              /*
 
       /// \brief Prevent an entity and optionally its children from
       /// being removed.
@@ -176,7 +175,6 @@ namespace gz
       /// \sa void PinEntity(const Entity, bool)
       public: void UnpinAllEntities();
 
-      */
       /// \brief Request to remove all entities. This will insert the request
       /// into a queue. The queue is processed toward the end of a simulation
       /// update step.
@@ -380,7 +378,6 @@ namespace gz
       /// why is this required?
       private: template <typename T>
                struct identity;  // NOLINT
-                                 /*
 
       /// \brief Helper function for cloning an entity and its children (this
       /// includes cloning components attached to these entities). This method
@@ -396,6 +393,7 @@ namespace gz
       /// \sa Clone
       private: Entity CloneImpl(Entity _entity, Entity _parent,
                   const std::string &_name, bool _allowRename);
+                                 /*
 
       /// \brief A version of Each() that doesn't use a cache. The cached
       /// version, Each(), is preferred.
@@ -598,7 +596,6 @@ namespace gz
       /// \sa FlecsComponentManager::PeriodicStateFromCache
       public: void UpdatePeriodicChangeCache(std::unordered_map<ComponentTypeId,
         std::unordered_set<Entity>>&) const;
-              /*
 
       /// \brief Set the absolute state of the ECM from a serialized message.
       /// Entities / components that are in the new state but not in the old
@@ -610,7 +607,6 @@ namespace gz
       /// \param[in] _stateMsg Message containing state to be set.
       public: void SetState(const msgs::SerializedState &_stateMsg);
 
-              */
       /// \brief Get a message with the serialized state of the given entities
       /// and components.
       /// \details The header of the message will not be populated, it is the
