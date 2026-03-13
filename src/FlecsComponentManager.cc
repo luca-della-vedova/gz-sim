@@ -123,6 +123,7 @@ class gz::sim::FlecsComponentManagerPrivate
   /// \param[in] _entity Entity that has component newly modified
   public: void AddModifiedComponent(const Entity &_entity);
 
+          */
   /// \brief Check whether a component is marked as a component that is
   /// currently removed or not.
   /// \param[in] _entity The entity
@@ -131,6 +132,7 @@ class gz::sim::FlecsComponentManagerPrivate
   /// removed. False otherwise
   public: bool ComponentMarkedAsRemoved(const Entity _entity,
               const ComponentTypeId _typeId) const;
+          /*
 
   /// \brief Set a cloned joint's parent or child link name.
   /// \param[in] _joint The cloned joint.
@@ -167,14 +169,9 @@ class gz::sim::FlecsComponentManagerPrivate
   /// entities that had this type of component changed.
   public: std::unordered_map<ComponentTypeId, std::unordered_set<Entity>>
             oneTimeChangedComponents;
-          /*
 
   /// \brief Entities that have just been created
   public: std::unordered_set<Entity> newlyCreatedEntities;
-
-  */
-  /// \brief Entities that need to be removed.
-  public: std::unordered_set<Entity> toRemoveEntities;
           /*
 
   /// \brief Entities that have components newly modified
@@ -184,14 +181,9 @@ class gz::sim::FlecsComponentManagerPrivate
   public: std::unordered_set<Entity> modifiedComponents;
 
   */
-  /// \brief Flag that indicates if all entities should be removed.
-  public: bool removeAllEntities{false};
-          /*
-
   /// \brief A mutex to protect newly created entities.
   public: std::mutex entityCreatedMutex;
 
-  */
   /// \brief A mutex to protect entity remove.
   public: std::mutex entityRemoveMutex;
           /*
@@ -324,6 +316,10 @@ FlecsComponentManager::FlecsComponentManager()
   : dataPtr(new FlecsComponentManagerPrivate)
 {
   // A mock entity to get the offset
+  // Pre-register since those will add IDs
+  world.component<SimEntity>();
+  world.component<NewEntity>();
+  world.component<RemoveEntity>();
   dataPtr->entityOffset = world.entity().id();
 }
 
@@ -381,7 +377,8 @@ size_t FlecsComponentManager::EntityCount() const
 /////////////////////////////////////////////////
 Entity FlecsComponentManager::CreateEntity()
 {
-  return this->world.entity().add<SimEntity>().id() - this->dataPtr->entityOffset;
+  auto e = this->world.entity().add<SimEntity>().add<NewEntity>().id() - this->dataPtr->entityOffset;
+  return e;
 }
 
 /*
@@ -680,19 +677,13 @@ Entity FlecsComponentManager::CloneImpl(Entity _entity, Entity _parent,
   return clonedEntity;
 }
 
+*/
 /////////////////////////////////////////////////
 void FlecsComponentManager::ClearNewlyCreatedEntities()
 {
-  std::lock_guard<std::mutex> lock(this->dataPtr->entityCreatedMutex);
-  this->dataPtr->newlyCreatedEntities.clear();
-
-  for (auto &view : this->dataPtr->views)
-  {
-    view.second.first->ResetNewEntityState();
-  }
+  this->world.remove_all<NewEntity>();
 }
 
-*/
 /////////////////////////////////////////////////
 bool FlecsComponentManager::HasRemovedComponents() const
 {
@@ -716,12 +707,11 @@ void FlecsComponentManagerPrivate::InsertEntityRecursive(
     std::unordered_set<Entity> &_set)
 {
   _set.insert(_entity);
-  flecs::query<SimEntity> q = world.query_builder<SimEntity>()
-    .with(flecs::ChildOf, _entity + this->entityOffset).up(flecs::ChildOf)
-    .build();
-
-  q.each([&_set, this](flecs::entity e, const SimEntity&) {
-    _set.insert(e.id() - this->entityOffset);
+  auto e = world.entity(_entity + this->entityOffset);
+  e.children([this, &world, &_set](flecs::entity child) {
+    const Entity gzEntity = child.id() - this->entityOffset;
+    _set.insert(gzEntity);
+    InsertEntityRecursive(world, gzEntity, _set);
   });
 }
 
@@ -745,6 +735,8 @@ void FlecsComponentManager::RequestRemoveEntity(Entity _entity,
   // Store the to-be-removed entities in a temporary set so we can call
   // UpdateViews on each of them
   std::unordered_set<Entity> tmpToRemoveEntities;
+  if (!this->HasEntity(_entity))
+    return;
   if (!_recursive)
   {
     tmpToRemoveEntities.insert(_entity);
@@ -756,6 +748,8 @@ void FlecsComponentManager::RequestRemoveEntity(Entity _entity,
     // remove detachable joint entities that are connected to
     // any of the entities to be removed
     std::unordered_set<Entity> detachableJoints;
+    // TODO(luca) this creates entities so it's commented out
+    /*
     this->Each<components::DetachableJoint>(
         [&](const Entity &_jointEntity,
             const components::DetachableJoint *_jointInfo) -> bool
@@ -769,39 +763,38 @@ void FlecsComponentManager::RequestRemoveEntity(Entity _entity,
             detachableJoints.insert(_jointEntity);
           return true;
         });
+        */
     tmpToRemoveEntities.insert(detachableJoints.begin(),
                                detachableJoints.end());
   }
 
   // Remove entities from tmpToRemoveEntities that are marked as
   // unremovable.
-  for (auto iter = tmpToRemoveEntities.begin();
-       iter != tmpToRemoveEntities.end();)
+  std::lock_guard<std::mutex> lock(this->dataPtr->entityRemoveMutex);
+
+  for (const auto& e : tmpToRemoveEntities)
   {
+    // TODO(luca) component for pinning entities
     if (std::find(this->dataPtr->pinnedEntities.begin(),
-                  this->dataPtr->pinnedEntities.end(), *iter) !=
+                  this->dataPtr->pinnedEntities.end(), e) !=
                this->dataPtr->pinnedEntities.end())
     {
-      iter = tmpToRemoveEntities.erase(iter);
+      continue;
     }
-    else
-    {
-      ++iter;
-    }
+    this->world.entity(e + this->EntityOffset()).add<RemoveEntity>();
   }
-
-  {
-    std::lock_guard<std::mutex> lock(this->dataPtr->entityRemoveMutex);
-    this->dataPtr->toRemoveEntities.insert(tmpToRemoveEntities.begin(),
-                                          tmpToRemoveEntities.end());
-  }
-
-  // TODO(luca) Add a disabled component
+  // TODO(luca) We need to add a without<RemoveEntity> in Each calls to make sure the component is not found
 }
 
 /////////////////////////////////////////////////
 void FlecsComponentManager::RequestRemoveEntities()
 {
+  std::lock_guard<std::mutex> lock(this->dataPtr->entityRemoveMutex);
+  this->world.query<SimEntity>().each([](flecs::entity e, const SimEntity&) {
+    // TODO(luca) check pinning, skip if so
+    e.add<RemoveEntity>();
+  });
+  /*
   if (this->dataPtr->pinnedEntities.empty())
   {
     {
@@ -811,7 +804,6 @@ void FlecsComponentManager::RequestRemoveEntities()
   }
   else
   {
-    /*
     std::unordered_set<Entity> tmpToRemoveEntities;
 
     // Store the to-be-removed entities in a temporary set so we can
@@ -839,8 +831,8 @@ void FlecsComponentManager::RequestRemoveEntities()
         view.second.first->MarkEntityToRemove(removedEntity);
       }
     }
-    */
   }
+  */
 }
 
 /////////////////////////////////////////////////
@@ -849,37 +841,13 @@ void FlecsComponentManager::ProcessRemoveEntityRequests()
   GZ_PROFILE("FlecsComponentManager::ProcessRemoveEntityRequests");
   std::lock_guard<std::mutex> lock(this->dataPtr->entityRemoveMutex);
   // Short-cut if erasing all entities
-  if (this->dataPtr->removeAllEntities)
-  {
-    GZ_PROFILE("RemoveAll");
-    this->dataPtr->removeAllEntities = false;
-    this->world.query<SimEntity>().each([](flecs::entity e, const SimEntity&) {
-        // Just remove all components and disable it.
-        e.clear();
-        e.disable();
-    });
-    this->dataPtr->toRemoveEntities.clear();
-    // this->dataPtr->componentsMarkedAsRemoved.clear();
-  }
-  else
-  {
-    GZ_PROFILE("Remove");
-    std::cerr << "Removing entities" << std::endl;
-    // Otherwise iterate through the list of entities to remove.
-    for (const Entity entity : this->dataPtr->toRemoveEntities)
-    {
-      std::cerr << "Removing entity " << entity << std::endl;
-      // Make sure the entity exists and is not removed.
-      if (!this->HasEntity(entity))
-        continue;
-      world.entity(entity + this->EntityOffset()).clear();
-      world.entity(entity + this->EntityOffset()).disable();
-
-      // this->dataPtr->componentsMarkedAsRemoved.erase(entity);
-    }
-    // Clear the set of entities to remove.
-    this->dataPtr->toRemoveEntities.clear();
-  }
+  GZ_PROFILE("Remove");
+  // Otherwise iterate through the list of entities to remove.
+  this->world.query<SimEntity, RemoveEntity>().each([](flecs::entity e, const SimEntity&, const RemoveEntity&) {
+    e.clear();
+    e.disable();
+  });
+  // this->dataPtr->componentsMarkedAsRemoved.erase(entity);
 }
 
 /////////////////////////////////////////////////
@@ -1008,22 +976,18 @@ ComponentState FlecsComponentManager::ComponentState(const Entity _entity,
 
   return result;
 }
-/*
 
 /////////////////////////////////////////////////
 bool FlecsComponentManager::HasNewEntities() const
 {
-  std::lock_guard<std::mutex> lock(this->dataPtr->entityCreatedMutex);
-  return !this->dataPtr->newlyCreatedEntities.empty();
+  return this->world.count<NewEntity>() > 0;
 }
 
-*/
 /////////////////////////////////////////////////
 bool FlecsComponentManager::HasEntitiesMarkedForRemoval() const
 {
   std::lock_guard<std::mutex> lock(this->dataPtr->entityRemoveMutex);
-  return this->dataPtr->removeAllEntities ||
-      !this->dataPtr->toRemoveEntities.empty();
+  return this->world.count<RemoveEntity>() > 0;
 }
 /*
 
@@ -1096,42 +1060,40 @@ bool FlecsComponentManager::HasEntity(const Entity _entity) const
   return e.is_alive() && e.has<SimEntity>() && e.enabled();
 }
 
-/*
 /////////////////////////////////////////////////
 Entity FlecsComponentManager::ParentEntity(const Entity _entity) const
 {
-  auto parents = this->Entities().AdjacentsTo(_entity);
-  if (parents.empty())
-    return kNullEntity;
-
-  // TODO(louise) Do we want to support multiple parents?
-  return parents.begin()->first;
+  const auto parent = this->world.entity(_entity + this->EntityOffset()).parent().id();
+  if (parent == kNullEntity)
+    return parent;
+  return parent - this->EntityOffset();
 }
 
 /////////////////////////////////////////////////
 bool FlecsComponentManager::SetParentEntity(const Entity _child,
     const Entity _parent)
 {
-  // Remove current parent(s)
-  auto parents = this->Entities().AdjacentsTo(_child);
-  for (const auto &parent : parents)
+  if (!this->HasEntity(_child))
   {
-    auto edge = this->dataPtr->entities.EdgeFromVertices(parent.first, _child);
-    this->dataPtr->entities.RemoveEdge(edge);
+    return false;
   }
 
-  // Leave parent-less
   if (_parent == kNullEntity)
   {
+    const auto currentParent = this->world.entity(_child + this->EntityOffset()).parent();
+    this->world.entity(_child + this->EntityOffset()).remove(flecs::ChildOf, currentParent);
     return true;
   }
 
-  // Add edge
-  auto edge = this->dataPtr->entities.AddEdge({_parent, _child}, true);
-  return (math::graph::kNullId != edge.Id());
+  if (!this->HasEntity(_parent))
+  {
+    return false;
+  }
+
+  this->world.entity(_child + this->EntityOffset()).child_of(_parent + this->EntityOffset());
+  return true;
 }
 
-*/
 /////////////////////////////////////////////////
 bool FlecsComponentManager::CreateComponentImplementation(
     const Entity _entity, const ComponentTypeId _componentTypeId,
@@ -1283,6 +1245,18 @@ const components::BaseComponent
     return nullptr;
 
   const auto entity = _entity + this->dataPtr->entityOffset;
+
+  const auto compEntity = components::Factory::Instance()->TypeIdToEntity(_type);
+  if (compEntity == std::nullopt)
+    return nullptr;
+
+  const auto* comp = this->world.entity(entity).try_get(*compEntity);
+  if (comp == nullptr)
+    return nullptr;
+
+  // TODO(luca) Add a IsA<BaseComponent> for Gazebo components
+  // TODO(luca) Document why this is safe
+  return static_cast<const components::BaseComponent*>(comp);
   /*
 
   // make sure the component type exists for the entity
@@ -1472,45 +1446,45 @@ void FlecsComponentManagerPrivate::SetRemovedComponentsMsgs(Entity &_entity,
   }
 }
 
+*/
 //////////////////////////////////////////////////
 void FlecsComponentManager::AddEntityToMessage(msgs::SerializedState &_msg,
     Entity _entity, const std::unordered_set<ComponentTypeId> &_types) const
 {
-  auto entityMsg = _msg.add_entities();
-  entityMsg->set_id(_entity);
-  auto iter = this->dataPtr->componentTypeIndex.find(_entity);
-  if (iter == this->dataPtr->componentTypeIndex.end())
+  if (!this->HasEntity(_entity))
     return;
 
-  if (this->dataPtr->toRemoveEntities.find(_entity) !=
-      this->dataPtr->toRemoveEntities.end())
+  auto entityMsg = _msg.add_entities();
+  entityMsg->set_id(_entity);
+
+  if (this->world.entity(_entity + this->EntityOffset()).has<RemoveEntity>())
   {
     entityMsg->set_remove(true);
   }
 
-  // Insert all of the entity's components if the passed in types
-  // set is empty
-  auto types = _types;
-  if (types.empty())
-  {
-    for (auto &type : this->dataPtr->componentTypeIndex[_entity])
+  world.entity(_entity + this->EntityOffset()).each([&](flecs::id component) {
+    std::cerr << "Component found" << std::endl;
+    const auto compId = components::Factory::Instance()->EntityToTypeId(component);
+    if (!compId.has_value())
     {
-      if (!this->dataPtr->ComponentMarkedAsRemoved(_entity, type.first))
-        types.insert(type.first);
+      return;
     }
-  }
+    std::cerr << "Register" << std::endl;
+    const auto type = *compId;
+    if (!_types.empty() && _types.find(type) == _types.end())
+    {
+      return;
+    }
+    std::cerr << "In input types" << std::endl;
+    // Check for removal here
+    if (this->dataPtr->ComponentMarkedAsRemoved(_entity, type))
+    {
+      return;
+    }
+    std::cerr << "Not removed" << std::endl;
 
-  for (const ComponentTypeId type : types)
-  {
-    // If the entity does not have the component, continue
-    auto typeIter = iter->second.find(type);
-    if (typeIter == iter->second.end())
-      continue;
-
-    // The component instance is nullptr if the component was removed
-    auto compBase = this->ComponentImplementation(_entity, type);
-    if (nullptr == compBase)
-      continue;
+    const components::BaseComponent *compBase =
+      this->ComponentImplementation(_entity, type);
 
     auto compMsg = entityMsg->add_components();
     compMsg->set_type(compBase->TypeId());
@@ -1519,11 +1493,12 @@ void FlecsComponentManager::AddEntityToMessage(msgs::SerializedState &_msg,
     compBase->Serialize(ostr);
 
     compMsg->set_component(ostr.str());
-  }
+  });
 
+  // TODO(luca)
   // Add a component to the message and set it to be removed if the component
   // exists in the removedComponents map.
-  this->dataPtr->SetRemovedComponentsMsgs(_entity, entityMsg, _types);
+  // this->dataPtr->SetRemovedComponentsMsgs(_entity, entityMsg, _types);
 }
 
 //////////////////////////////////////////////////
@@ -1531,17 +1506,17 @@ void FlecsComponentManager::AddEntityToMessage(msgs::SerializedStateMap &_msg,
     Entity _entity, const std::unordered_set<ComponentTypeId> &_types,
     bool _full) const
 {
-  auto iter = this->dataPtr->componentTypeIndex.find(_entity);
-  if (iter == this->dataPtr->componentTypeIndex.end())
+  std::cerr << "Checking for entity " << _entity << std::endl;
+  if (!this->HasEntity(_entity))
     return;
 
+  std::cerr << "Entity " << _entity << " found" << std::endl;
   // Set the default entity iterator to the end. This will allow us to know
   // if the entity has been added to the message.
   auto entIter = _msg.mutable_entities()->end();
   // Add an entity to the message and set it to be removed if the entity
   // exists in the toRemoveEntities list.
-  if (this->dataPtr->toRemoveEntities.find(_entity) !=
-      this->dataPtr->toRemoveEntities.end())
+  if (this->world.entity(_entity + this->EntityOffset()).has<RemoveEntity>())
   {
     // Find the entity in the message, and add if not present.
     entIter = _msg.mutable_entities()->find(_entity);
@@ -1556,26 +1531,29 @@ void FlecsComponentManager::AddEntityToMessage(msgs::SerializedStateMap &_msg,
     entIter->second.set_remove(true);
   }
 
+  std::cerr << "Iterating over its components" << std::endl;
   // Insert all of the entity's components if the passed in types
   // set is empty
-  auto types = _types;
-  if (types.empty())
-  {
-    for (auto &type : this->dataPtr->componentTypeIndex[_entity])
+  world.entity(_entity + this->EntityOffset()).each([&](flecs::id component) {
+    std::cerr << "Component found" << std::endl;
+    const auto compId = components::Factory::Instance()->EntityToTypeId(component);
+    if (!compId.has_value())
     {
-      if (!this->dataPtr->ComponentMarkedAsRemoved(_entity, type.first))
-        types.insert(type.first);
+      return;
     }
-  }
-
-  // Empty means all types
-  for (const ComponentTypeId type : types)
-  {
-    auto typeIter = iter->second.find(type);
-    if (typeIter == iter->second.end())
+    std::cerr << "Register" << std::endl;
+    const auto type = *compId;
+    if (!_types.empty() && _types.find(type) == _types.end())
     {
-      continue;
+      return;
     }
+    std::cerr << "In input types" << std::endl;
+    // Check for removal here
+    if (this->dataPtr->ComponentMarkedAsRemoved(_entity, type))
+    {
+      return;
+    }
+    std::cerr << "Not removed" << std::endl;
 
     const components::BaseComponent *compBase =
       this->ComponentImplementation(_entity, type);
@@ -1583,6 +1561,7 @@ void FlecsComponentManager::AddEntityToMessage(msgs::SerializedStateMap &_msg,
     // If not sending full state, skip unchanged components
     if (!_full)
     {
+      std::cerr << "Not full call" << std::endl;
       bool noChange = true;
 
       // see if the entity has a component of this particular type marked as a
@@ -1602,17 +1581,23 @@ void FlecsComponentManager::AddEntityToMessage(msgs::SerializedStateMap &_msg,
           noChange = false;
       }
 
+      std::cerr << "Checking for changed" << std::endl;
       if (noChange)
-        continue;
+        return;
+
+      std::cerr << "Was indeed changed!" << std::endl;
     }
+    std::cerr << "Full call" << std::endl;
 
     /// Find the entity in the message, if not already found.
     /// Add the entity to the message, if not already added.
     if (entIter == _msg.mutable_entities()->end())
     {
+      std::cerr << "Not found already" << std::endl;
       entIter = _msg.mutable_entities()->find(_entity);
       if (entIter == _msg.mutable_entities()->end())
       {
+        std::cerr << "Adding" << std::endl;
         msgs::SerializedEntityMap ent;
         ent.set_id(_entity);
         (*_msg.mutable_entities())[static_cast<uint64_t>(_entity)] = ent;
@@ -1625,6 +1610,7 @@ void FlecsComponentManager::AddEntityToMessage(msgs::SerializedStateMap &_msg,
     // message if it's not present.
     if (compIter == entIter->second.mutable_components()->end())
     {
+      std::cerr << "Adding component to state" << std::endl;
       msgs::SerializedComponent cmp;
       cmp.set_type(compBase->TypeId());
       (*(entIter->second.mutable_components()))[
@@ -1632,15 +1618,17 @@ void FlecsComponentManager::AddEntityToMessage(msgs::SerializedStateMap &_msg,
       compIter = entIter->second.mutable_components()->find(type);
     }
 
+    std::cerr << "Serializing component" << std::endl;
     // Serialize and store the message
     std::ostringstream ostr;
     compBase->Serialize(ostr);
     compIter->second.set_component(ostr.str());
-  }
+  });
 
+  // TODO(luca)
   // Add a component to the message and set it to be removed if the component
   // exists in the removedComponents map.
-  this->dataPtr->SetRemovedComponentsMsgs(_entity, _msg, _types);
+  // this->dataPtr->SetRemovedComponentsMsgs(_entity, _msg, _types);
 }
 
 //////////////////////////////////////////////////
@@ -1649,6 +1637,11 @@ msgs::SerializedState FlecsComponentManager::ChangedState() const
   msgs::SerializedState stateMsg;
 
   // New entities
+  this->EachNew([this, &stateMsg](const Entity &e) {
+    this->AddEntityToMessage(stateMsg, e);
+    return true;
+  });
+  /*
   for (const auto &entity : this->dataPtr->newlyCreatedEntities)
   {
     this->AddEntityToMessage(stateMsg, entity);
@@ -1665,10 +1658,12 @@ msgs::SerializedState FlecsComponentManager::ChangedState() const
   {
     this->AddEntityToMessage(stateMsg, entity);
   }
+  */
 
   return stateMsg;
 }
 
+/*
 //////////////////////////////////////////////////
 void FlecsComponentManager::ChangedState(
     msgs::SerializedStateMap &_state) const
@@ -1758,6 +1753,7 @@ msgs::SerializedState FlecsComponentManager::State(
   return stateMsg;
 }
 
+*/
 //////////////////////////////////////////////////
 void FlecsComponentManager::State(
     msgs::SerializedStateMap  &_state,
@@ -1765,6 +1761,22 @@ void FlecsComponentManager::State(
     const std::unordered_set<ComponentTypeId> &_types,
     bool _full) const
 {
+  // TODO(luca) Avoid pushing to vector, just do everything in a single query?
+  // At least reserve size?
+  // Or just call inside?
+  std::vector<Entity> entitiesToAdd;
+  this->world.each<const SimEntity>([this, &_entities, &entitiesToAdd](flecs::entity e, const SimEntity&) {
+    const Entity gzEntity = e.id() - this->EntityOffset();
+    if (_entities.empty() || _entities.find(gzEntity) != _entities.end())
+      entitiesToAdd.push_back(gzEntity);
+  });
+
+  std::cerr << "Number of entities to add is " << entitiesToAdd.size() << std::endl;
+
+  for (const auto& e : entitiesToAdd) {
+    this->AddEntityToMessage(_state, e, _types, _full);
+  }
+  /*
   std::mutex stateMapMutex;
   std::vector<std::thread> workers;
 
@@ -1805,7 +1817,9 @@ void FlecsComponentManager::State(
   {
     _t.join();
   });
+  */
 }
+/*
 
 //////////////////////////////////////////////////
 void FlecsComponentManager::PeriodicStateFromCache(
@@ -2189,16 +2203,21 @@ void FlecsComponentManagerPrivate::AddModifiedComponent(const Entity &_entity)
   this->modifiedComponents.insert(_entity);
 }
 
+*/
 /////////////////////////////////////////////////
 bool FlecsComponentManagerPrivate::ComponentMarkedAsRemoved(
     const Entity _entity, const ComponentTypeId _typeId) const
 {
+  return false;
+  /*
   auto iter = this->componentsMarkedAsRemoved.find(_entity);
   if (iter != this->componentsMarkedAsRemoved.end())
     return iter->second.find(_typeId) != iter->second.end();
 
   return false;
+  */
 }
+/*
 
 /////////////////////////////////////////////////
 template<typename ComponentTypeT>

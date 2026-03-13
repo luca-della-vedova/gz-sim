@@ -91,12 +91,10 @@ GZ_SIM_REGISTER_COMPONENT("gz_sim_components.CustomComponent",
 
 class FlecsCompMgrTest : public FlecsComponentManager
 {
-  /*
   public: void RunClearNewlyCreatedEntities()
   {
     this->ClearNewlyCreatedEntities();
   }
-  */
   public: void ProcessEntityRemovals()
   {
     this->ProcessRemoveEntityRequests();
@@ -912,10 +910,12 @@ TEST_P(FlecsComponentManagerFixture, RemoveEntity)
   EXPECT_EQ(4u, e4);
   EXPECT_EQ(3u, manager.EntityCount());
 
-  // Can not delete an invalid entity, but it shows up as marked for removal.
   manager.RequestRemoveEntity(6);
   EXPECT_EQ(3u, manager.EntityCount());
-  EXPECT_TRUE(manager.HasEntitiesMarkedForRemoval());
+  // TODO(luca) BEHAVIOR CHANGE: Previous:
+  // Can not delete an invalid entity, but it shows up as marked for removal.
+  // Now non-existing entity doesn't show up as marked for removal
+  // EXPECT_TRUE(manager.HasEntitiesMarkedForRemoval());
   manager.ProcessEntityRemovals();
   EXPECT_EQ(3u, manager.EntityCount());
 
@@ -941,7 +941,6 @@ TEST_P(FlecsComponentManagerFixture, RemoveEntity)
   EXPECT_EQ(0u, manager.EntityCount());
 }
 
-/*
 //////////////////////////////////////////////////
 TEST_P(FlecsComponentManagerFixture,
        GZ_UTILS_TEST_DISABLED_ON_WIN32(ViewsRemoveEntity))
@@ -1006,7 +1005,7 @@ TEST_P(FlecsComponentManagerFixture,
 //////////////////////////////////////////////////
 /// \brief Helper function to count the number of "new" entities
 template<typename ...Ts>
-int newCount(EntityCompMgrTest &_manager)
+int newCount(FlecsCompMgrTest &_manager)
 {
   int count = 0;
   _manager.EachNew<Ts...>(
@@ -1022,7 +1021,7 @@ int newCount(EntityCompMgrTest &_manager)
       });
 
   // get a const ref to test the const version of EachNew
-  const EntityCompMgrTest &managerConst = _manager;
+  const FlecsCompMgrTest &managerConst = _manager;
 
   count = 0;
   managerConst.EachNew<Ts ...>(
@@ -1041,7 +1040,7 @@ int newCount(EntityCompMgrTest &_manager)
 //////////////////////////////////////////////////
 /// \brief Helper function to count the number of "removed" entities
 template<typename ...Ts>
-int removedCount(EntityCompMgrTest &_manager)
+int removedCount(FlecsCompMgrTest &_manager)
 {
   int count = 0;
   _manager.EachRemoved<Ts ...>(
@@ -1060,7 +1059,7 @@ int removedCount(EntityCompMgrTest &_manager)
 /// \brief Helper function to count the number of entities returned by an Each
 /// call
 template<typename ...Ts>
-int eachCount(EntityCompMgrTest &_manager)
+int eachCount(FlecsCompMgrTest &_manager)
 {
   int count = 0;
   _manager.Each<Ts ...>(
@@ -1156,9 +1155,6 @@ TEST_P(FlecsComponentManagerFixture,
   Entity e2 = manager.CreateEntity();
   auto comp2 = manager.CreateComponent<IntComponent>(e2, IntComponent(456));
   ASSERT_NE(nullptr, comp2);
-  EXPECT_EQ(1, newCount<IntComponent>(manager));
-  // Check if this true after RebuildViews
-  manager.RebuildViews();
   EXPECT_EQ(1, newCount<IntComponent>(manager));
 }
 
@@ -1266,9 +1262,6 @@ TEST_P(FlecsComponentManagerFixture,
   manager.RunClearNewlyCreatedEntities();
 
   manager.RequestRemoveEntity(e1);
-  EXPECT_EQ(1, removedCount<IntComponent>(manager));
-
-  manager.RebuildViews();
   EXPECT_EQ(1, removedCount<IntComponent>(manager));
 }
 
@@ -1773,6 +1766,7 @@ TEST_P(FlecsComponentManagerFixture, GZ_UTILS_TEST_DISABLED_ON_WIN32(State))
     auto changedStateMsg = manager.ChangedState();
     EXPECT_EQ(0, changedStateMsg.entities_size());
   }
+  /*
 
   // Deserialize into a new ECM
   FlecsComponentManager newEcm;
@@ -1939,8 +1933,10 @@ TEST_P(FlecsComponentManagerFixture, GZ_UTILS_TEST_DISABLED_ON_WIN32(State))
     EXPECT_EQ(IntComponent::typeId, e4c0Msg.type());
     EXPECT_EQ(e4c0, std::stoi(e4c0Msg.component()));
   }
+  */
 }
 
+/*
 /////////////////////////////////////////////////
 TEST_P(FlecsComponentManagerFixture,
        GZ_UTILS_TEST_ENABLED_ONLY_ON_LINUX(ChangedStateComponents))
@@ -2633,7 +2629,7 @@ TEST_P(FlecsComponentManagerFixture,
            RemovedComponentsSyncBetweenServerAndGUI))
 {
   // Simulate the GUI's ECM
-  EntityCompMgrTest guiManager;
+  FlecsCompMgrTest guiManager;
 
   // Create entity
   Entity e1 = manager.CreateEntity();
@@ -3182,7 +3178,7 @@ TEST_P(FlecsComponentManagerFixture, CopyEcm)
   math::Pose3d testPose{1, 2, 3, 0.1, 0.2, 0.3};
   manager.CreateComponent(entity, components::Pose{testPose});
 
-  EntityCompMgrTest managerCopy;
+  FlecsCompMgrTest managerCopy;
   managerCopy.CopyFrom(manager);
   EXPECT_EQ(manager.EntityCount(), managerCopy.EntityCount());
   EXPECT_TRUE(managerCopy.HasEntity(entity));
@@ -3204,7 +3200,7 @@ TEST_P(FlecsComponentManagerFixture, ComputeDiff)
   math::Pose3d testPose{1, 2, 3, 0.1, 0.2, 0.3};
   manager.CreateComponent(entity1, components::Pose{testPose});
 
-  EntityCompMgrTest managerCopy;
+  FlecsCompMgrTest managerCopy;
   managerCopy.CopyFrom(manager);
 
   Entity entity2 = manager.CreateEntity();
@@ -3268,7 +3264,7 @@ TEST_P(FlecsComponentManagerFixture, ResetToWithDeletedEntity)
     ASSERT_EQ(2u, newEntities.size());
   }
 
-  EntityCompMgrTest managerCopy;
+  FlecsCompMgrTest managerCopy;
   managerCopy.CopyFrom(manager);
 
   manager.RequestRemoveEntity(entity1);
@@ -3308,7 +3304,7 @@ TEST_P(FlecsComponentManagerFixture, ResetToWithAddedEntity)
   Entity entity2 = manager.CreateEntity();
   manager.CreateComponent(entity2, Name{"entity2"});
 
-  EntityCompMgrTest managerCopy;
+  FlecsCompMgrTest managerCopy;
   managerCopy.CopyFrom(manager);
 
   // Add entity3 after a copy has been made.

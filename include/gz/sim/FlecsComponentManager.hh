@@ -48,6 +48,11 @@ namespace gz
   namespace sim
   {
     // Inline bracket to help doxygen filtering.
+
+    // Marker for entities that have been newly created
+    struct NewEntity { };
+    // Marker for entities that are marked for removal
+    struct RemoveEntity { };
     inline namespace GZ_SIM_VERSION_NAMESPACE {
     // Forward declarations.
     class GZ_SIM_HIDDEN FlecsComponentManagerPrivate;
@@ -177,7 +182,6 @@ namespace gz
       /// \param[in] _entity Entity to confirm.
       /// \return True if the Entity exists.
       public: bool HasEntity(const Entity _entity) const;
-      /*
 
       /// \brief Get the first parent of the given entity.
       /// \details Entities are not expected to have multiple parents.
@@ -199,7 +203,6 @@ namespace gz
       /// \return True if successful. Will fail if entities don't exist.
       public: bool SetParentEntity(const Entity _child, const Entity _parent);
 
-          */
       /// \brief Get whether a component type has ever been created.
       /// \param[in] _typeId ID of the component type to check.
       /// \return True if the provided _typeId has been created.
@@ -315,7 +318,6 @@ namespace gz
       /// \return All the component type IDs.
       public: std::unordered_set<ComponentTypeId> ComponentTypes(
           Entity _entity) const;
-              /*
 
       /// \brief Get an entity which matches the value of all the given
       /// components. For example, the following will return the entity which
@@ -367,7 +369,6 @@ namespace gz
               std::vector<Entity> ChildrenByComponents(Entity _parent,
                    const ComponentTypeTs &..._desiredComponents) const;
 
-                   */
       /// why is this required?
       private: template <typename T>
                struct identity;  // NOLINT
@@ -457,7 +458,6 @@ namespace gz
                   bool(const Entity &_entity,
                        ComponentTypeTs *...)>>::type _f);
 
-              /*
       /// \brief Call a function for each parameter in a pack.
       /// \param[in] _f Function to be called.
       /// \param[in] _components Parameters which should be passed to the
@@ -515,6 +515,7 @@ namespace gz
               void EachRemoved(typename identity<std::function<
                   bool(const Entity &_entity,
                        const ComponentTypeTs *...)>>::type _f) const;
+              /*
 
       /// \brief Get a graph with all the entities. Entities are vertices and
       /// edges point from parent to children.
@@ -528,6 +529,7 @@ namespace gz
       /// empty if the entity doesn't exist.
       public: std::unordered_set<Entity> Descendants(Entity _entity) const;
 
+              */
       /// \brief Get a message with the serialized state of the given entities
       /// and components.
       /// \details The header of the message will not be populated, it is the
@@ -558,7 +560,6 @@ namespace gz
       /// \return True if there are new entities.
       public: bool HasNewEntities() const;
 
-              */
       /// \brief Get whether there are any entities marked to be removed.
       /// \return True if there are entities marked to be removed.
       public: bool HasEntitiesMarkedForRemoval() const;
@@ -601,6 +602,7 @@ namespace gz
       /// \param[in] _stateMsg Message containing state to be set.
       public: void SetState(const msgs::SerializedState &_stateMsg);
 
+              */
       /// \brief Get a message with the serialized state of the given entities
       /// and components.
       /// \details The header of the message will not be populated, it is the
@@ -617,6 +619,7 @@ namespace gz
                   const std::unordered_set<Entity> &_entities = {},
                   const std::unordered_set<ComponentTypeId> &_types = {},
                   bool _full = false) const;
+              /*
 
       /// \brief Populate a message with relevant changes to the state given
       /// a periodic change cache.
@@ -700,9 +703,11 @@ namespace gz
       public: std::optional<Entity> EntityByName(
                   const std::string &_name) const;
 
+              */
       /// \brief Clear the list of newly added entities so that a call to
       /// EachAdded after this will have no entities to iterate.
       public: void ClearNewlyCreatedEntities();
+              /*
 
       /// \brief Clear the list of removed components so that a call to
       /// RemoveComponent doesn't make the list grow indefinitely.
@@ -807,6 +812,7 @@ namespace gz
                    const detail::ComponentTypeKey &_types,
                    std::unique_ptr<detail::BaseView> _view) const;
 
+      */
       /// \brief Add an entity and its components to a serialized state message.
       /// \param[out] _msg The state message.
       /// \param[in] _entity The entity to be added.
@@ -816,7 +822,6 @@ namespace gz
           Entity _entity,
           const std::unordered_set<ComponentTypeId> &_types = {}) const;
 
-      */
       /// \brief Private data pointer.
       private: std::unique_ptr<FlecsComponentManagerPrivate> dataPtr;
 
@@ -825,7 +830,6 @@ namespace gz
 
       /// \brief Gets the entity offset to apply to entity functions
       private: Entity EntityOffset() const;
-      /*
 
       /// \brief Add an entity and its components to a serialized state message.
       /// \param[out] _msg The state message.
@@ -841,6 +845,7 @@ namespace gz
           const std::unordered_set<ComponentTypeId> &_types = {},
           bool _full = false) const;
 
+      /*
       /// \brief Set whether views should be locked when entities are being
       /// added to them. This can be used to prevent race conditions in
       /// system PostUpdates, since these are run in parallel (entities are
