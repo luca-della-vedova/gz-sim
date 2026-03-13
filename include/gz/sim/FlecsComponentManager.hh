@@ -649,6 +649,7 @@ namespace gz
       /// responsibility of the caller to timestamp it before use.
       public: void ChangedState(msgs::SerializedStateMap &_state) const;
 
+              */
       /// \brief Set the absolute state of the ECM from a serialized message.
       /// Entities / components that are in the new state but not in the old
       /// one will be created.
@@ -659,7 +660,6 @@ namespace gz
       /// \param[in] _stateMsg Message containing state to be set.
       public: void SetState(const msgs::SerializedStateMap &_stateMsg);
 
-              */
       /// \brief Set the changed state of a component.
       /// \param[in] _entity The entity.
       /// \param[in] _type Type of the component.

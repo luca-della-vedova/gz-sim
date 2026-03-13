@@ -62,14 +62,13 @@ class gz::sim::FlecsComponentManagerPrivate
   // Flecs stores components in entities that might change at runtime
   // public: std::unordered_map<ComponentTypeId, flecs::entity> typeIdToEntity;
 
-  /*
   /// \brief Implementation of the CreateEntity function, which takes a specific
   /// entity as input.
+  /// \param[in] _world The flecs world to add the entity to.
   /// \param[in] _entity Entity to be created.
   /// \return Created entity, which should match the input.
-  public: Entity CreateEntityImplementation(Entity _entity);
+  public: Entity CreateEntityImplementation(flecs::world& world, Entity _entity);
 
-  */
   /// \brief Recursively insert an entity and all its descendants into a given
   /// set.
   /// \param[in] _world The flecs world to make the search on.
@@ -381,43 +380,19 @@ Entity FlecsComponentManager::CreateEntity()
   return e;
 }
 
-/*
 /////////////////////////////////////////////////
-Entity FlecsComponentManagerPrivate::CreateEntityImplementation(Entity _entity)
+Entity FlecsComponentManagerPrivate::CreateEntityImplementation(flecs::world& world, Entity _entity)
 {
-  GZ_PROFILE("FlecsComponentManager::CreateEntityImplementation");
-  this->entities.AddVertex(std::to_string(_entity), _entity, _entity);
-
-  // Add entity to the list of newly created entities
-  {
-    std::lock_guard<std::mutex> lock(this->entityCreatedMutex);
-    this->newlyCreatedEntities.insert(_entity);
-  }
-
-  // Reset descendants cache
-  this->descendantCache.clear();
-
-  const auto result = this->componentStorage.insert({_entity,
-      std::vector<std::unique_ptr<components::BaseComponent>>()});
-  if (!result.second)
-  {
-    gzwarn << "Attempted to add entity [" << _entity
-      << "] to component storage, but this entity is already in component "
-      << "storage.\n";
-  }
-
-  const auto result2 = this->componentTypeIndex.insert({_entity,
-      std::unordered_map<ComponentTypeId, std::size_t>()});
-  if (!result2.second)
-  {
-    gzwarn << "Attempted to add entity [" << _entity
-      << "] to component type index, but this entity is already in component "
-      << "type index.\n";
-  }
-
-  return _entity;
+  // Preallocate the size to make sure we don't allocate uninitialized memory
+  const auto maxId = std::max(world.get_info()->max_id, _entity + this->entityOffset);
+  world.dim(maxId);
+  std::cerr << "Trying to add entity " << _entity << " with offset " << this->entityOffset << std::endl;
+  auto e = world.entity(_entity + this->entityOffset);
+  return e.add<SimEntity>().add<NewEntity>().id() - this->entityOffset;
+  return e;
 }
 
+/*
 /////////////////////////////////////////////////
 Entity FlecsComponentManager::Clone(Entity _entity, Entity _parent,
     const std::string &_name, bool _allowRename)
@@ -790,10 +765,12 @@ void FlecsComponentManager::RequestRemoveEntity(Entity _entity,
 void FlecsComponentManager::RequestRemoveEntities()
 {
   std::lock_guard<std::mutex> lock(this->dataPtr->entityRemoveMutex);
+  this->world.defer_begin();
   this->world.query<SimEntity>().each([](flecs::entity e, const SimEntity&) {
     // TODO(luca) check pinning, skip if so
     e.add<RemoveEntity>();
   });
+  this->world.defer_end();
   /*
   if (this->dataPtr->pinnedEntities.empty())
   {
@@ -843,10 +820,12 @@ void FlecsComponentManager::ProcessRemoveEntityRequests()
   // Short-cut if erasing all entities
   GZ_PROFILE("Remove");
   // Otherwise iterate through the list of entities to remove.
+  this->world.defer_begin();
   this->world.query<SimEntity, RemoveEntity>().each([](flecs::entity e, const SimEntity&, const RemoveEntity&) {
     e.clear();
     e.disable();
   });
+  this->world.defer_end();
   // this->dataPtr->componentsMarkedAsRemoved.erase(entity);
 }
 
@@ -1463,25 +1442,21 @@ void FlecsComponentManager::AddEntityToMessage(msgs::SerializedState &_msg,
   }
 
   world.entity(_entity + this->EntityOffset()).each([&](flecs::id component) {
-    std::cerr << "Component found" << std::endl;
     const auto compId = components::Factory::Instance()->EntityToTypeId(component);
     if (!compId.has_value())
     {
       return;
     }
-    std::cerr << "Register" << std::endl;
     const auto type = *compId;
     if (!_types.empty() && _types.find(type) == _types.end())
     {
       return;
     }
-    std::cerr << "In input types" << std::endl;
     // Check for removal here
     if (this->dataPtr->ComponentMarkedAsRemoved(_entity, type))
     {
       return;
     }
-    std::cerr << "Not removed" << std::endl;
 
     const components::BaseComponent *compBase =
       this->ComponentImplementation(_entity, type);
@@ -1506,11 +1481,9 @@ void FlecsComponentManager::AddEntityToMessage(msgs::SerializedStateMap &_msg,
     Entity _entity, const std::unordered_set<ComponentTypeId> &_types,
     bool _full) const
 {
-  std::cerr << "Checking for entity " << _entity << std::endl;
   if (!this->HasEntity(_entity))
     return;
 
-  std::cerr << "Entity " << _entity << " found" << std::endl;
   // Set the default entity iterator to the end. This will allow us to know
   // if the entity has been added to the message.
   auto entIter = _msg.mutable_entities()->end();
@@ -1531,29 +1504,24 @@ void FlecsComponentManager::AddEntityToMessage(msgs::SerializedStateMap &_msg,
     entIter->second.set_remove(true);
   }
 
-  std::cerr << "Iterating over its components" << std::endl;
   // Insert all of the entity's components if the passed in types
   // set is empty
   world.entity(_entity + this->EntityOffset()).each([&](flecs::id component) {
-    std::cerr << "Component found" << std::endl;
     const auto compId = components::Factory::Instance()->EntityToTypeId(component);
     if (!compId.has_value())
     {
       return;
     }
-    std::cerr << "Register" << std::endl;
     const auto type = *compId;
     if (!_types.empty() && _types.find(type) == _types.end())
     {
       return;
     }
-    std::cerr << "In input types" << std::endl;
     // Check for removal here
     if (this->dataPtr->ComponentMarkedAsRemoved(_entity, type))
     {
       return;
     }
-    std::cerr << "Not removed" << std::endl;
 
     const components::BaseComponent *compBase =
       this->ComponentImplementation(_entity, type);
@@ -1561,7 +1529,6 @@ void FlecsComponentManager::AddEntityToMessage(msgs::SerializedStateMap &_msg,
     // If not sending full state, skip unchanged components
     if (!_full)
     {
-      std::cerr << "Not full call" << std::endl;
       bool noChange = true;
 
       // see if the entity has a component of this particular type marked as a
@@ -1581,23 +1548,18 @@ void FlecsComponentManager::AddEntityToMessage(msgs::SerializedStateMap &_msg,
           noChange = false;
       }
 
-      std::cerr << "Checking for changed" << std::endl;
       if (noChange)
         return;
 
-      std::cerr << "Was indeed changed!" << std::endl;
     }
-    std::cerr << "Full call" << std::endl;
 
     /// Find the entity in the message, if not already found.
     /// Add the entity to the message, if not already added.
     if (entIter == _msg.mutable_entities()->end())
     {
-      std::cerr << "Not found already" << std::endl;
       entIter = _msg.mutable_entities()->find(_entity);
       if (entIter == _msg.mutable_entities()->end())
       {
-        std::cerr << "Adding" << std::endl;
         msgs::SerializedEntityMap ent;
         ent.set_id(_entity);
         (*_msg.mutable_entities())[static_cast<uint64_t>(_entity)] = ent;
@@ -1610,7 +1572,6 @@ void FlecsComponentManager::AddEntityToMessage(msgs::SerializedStateMap &_msg,
     // message if it's not present.
     if (compIter == entIter->second.mutable_components()->end())
     {
-      std::cerr << "Adding component to state" << std::endl;
       msgs::SerializedComponent cmp;
       cmp.set_type(compBase->TypeId());
       (*(entIter->second.mutable_components()))[
@@ -1618,7 +1579,6 @@ void FlecsComponentManager::AddEntityToMessage(msgs::SerializedStateMap &_msg,
       compIter = entIter->second.mutable_components()->find(type);
     }
 
-    std::cerr << "Serializing component" << std::endl;
     // Serialize and store the message
     std::ostringstream ostr;
     compBase->Serialize(ostr);
@@ -1771,7 +1731,6 @@ void FlecsComponentManager::State(
       entitiesToAdd.push_back(gzEntity);
   });
 
-  std::cerr << "Number of entities to add is " << entitiesToAdd.size() << std::endl;
 
   for (const auto& e : entitiesToAdd) {
     this->AddEntityToMessage(_state, e, _types, _full);
@@ -1961,10 +1920,12 @@ void FlecsComponentManager::SetState(
   }
 }
 
+*/
 //////////////////////////////////////////////////
 void FlecsComponentManager::SetState(
     const msgs::SerializedStateMap &_stateMsg)
 {
+  /*
   GZ_PROFILE("FlecsComponentManager::SetState Map");
   // Create / remove / update entities
   for (const auto &iter : _stateMsg.entities())
@@ -1983,7 +1944,7 @@ void FlecsComponentManager::SetState(
     // Create entity if it doesn't exist
     if (!this->HasEntity(entity))
     {
-      this->dataPtr->CreateEntityImplementation(entity);
+      this->dataPtr->CreateEntityImplementation(this->world, entity);
     }
 
     // Create / remove / update components
@@ -2055,7 +2016,9 @@ void FlecsComponentManager::SetState(
       }
     }
   }
+  */
 }
+/*
 
 //////////////////////////////////////////////////
 std::unordered_set<Entity> FlecsComponentManager::Descendants(Entity _entity)

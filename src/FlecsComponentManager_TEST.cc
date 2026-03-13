@@ -1127,13 +1127,16 @@ TEST_P(FlecsComponentManagerFixture,
   Entity e1 = manager.CreateEntity();
   auto comp1 = manager.CreateComponent<IntComponent>(e1, IntComponent(123));
   ASSERT_NE(nullptr, comp1);
+  // TODO(luca) CHANGED! Before the pointer was addressed after adding the second component.
+  // Adding a component might change archetype and invalidate pointers!
+  auto comp1Id = comp1->TypeId();
   auto comp2 = manager.CreateComponent<DoubleComponent>(e1,
       DoubleComponent(0.0));
   ASSERT_NE(nullptr, comp2);
 
   EXPECT_EQ(1, newCount<IntComponent>(manager));
 
-  EXPECT_TRUE(manager.RemoveComponent(e1, comp1->TypeId()));
+  EXPECT_TRUE(manager.RemoveComponent(e1, comp1Id));
   EXPECT_EQ(1, newCount<DoubleComponent>(manager));
 
   manager.RunClearNewlyCreatedEntities();
@@ -1766,11 +1769,11 @@ TEST_P(FlecsComponentManagerFixture, GZ_UTILS_TEST_DISABLED_ON_WIN32(State))
     auto changedStateMsg = manager.ChangedState();
     EXPECT_EQ(0, changedStateMsg.entities_size());
   }
-  /*
 
   // Deserialize into a new ECM
   FlecsComponentManager newEcm;
   newEcm.SetState(stateMsg);
+  /*
 
   // Check ECM
   {
