@@ -2411,7 +2411,6 @@ TEST_P(FlecsComponentManagerFixture,
   EXPECT_EQ(5001u, entity3);
 }
 
-/*
 //////////////////////////////////////////////////
 TEST_P(FlecsComponentManagerFixture,
        GZ_UTILS_TEST_DISABLED_ON_WIN32(
@@ -2495,23 +2494,28 @@ TEST_P(FlecsComponentManagerFixture,
   Entity e1 = manager.CreateEntity();
   auto e1c0 =
     manager.CreateComponent<IntComponent>(e1, IntComponent(123));
+  // CHANGED
+  // TypeIds are not pointer stable in Flecs
   ASSERT_NE(nullptr, e1c0);
+  auto e1c0Id = e1c0->TypeId();
   auto e1c1 =
     manager.CreateComponent<DoubleComponent>(e1, DoubleComponent(0.0));
   ASSERT_NE(nullptr, e1c1);
+  auto e1c1Id = e1c1->TypeId();
   auto e1c2 =
     manager.CreateComponent<StringComponent>(e1, StringComponent("int"));
   ASSERT_NE(nullptr, e1c2);
+  auto e1c2Id = e1c2->TypeId();
 
   // We use this map because the order in which components are iterated
   // through depends on the (undetermined) order of unordered multimaps
   std::map<ComponentTypeId, bool> expectations;
-  expectations.insert(std::make_pair(e1c0->TypeId(), false));
-  expectations.insert(std::make_pair(e1c1->TypeId(), true));
-  expectations.insert(std::make_pair(e1c2->TypeId(), true));
+  expectations.insert(std::make_pair(e1c0Id, false));
+  expectations.insert(std::make_pair(e1c1Id, true));
+  expectations.insert(std::make_pair(e1c2Id, true));
 
-  EXPECT_TRUE(manager.RemoveComponent(e1, e1c1->TypeId()));
-  EXPECT_TRUE(manager.RemoveComponent(e1, e1c2->TypeId()));
+  EXPECT_TRUE(manager.RemoveComponent(e1, e1c1Id));
+  EXPECT_TRUE(manager.RemoveComponent(e1, e1c2Id));
 
   // Serialize into a message
   msgs::SerializedState stateMsg;
@@ -2561,16 +2565,20 @@ TEST_P(FlecsComponentManagerFixture,
   auto e1c0 =
     manager.CreateComponent<IntComponent>(e1, IntComponent(123));
   ASSERT_NE(nullptr, e1c0);
+  // CHANGED
+  // Flecs component pointers are not stable
+  auto e1c0Id = e1c0->TypeId();
   auto e1c1 = manager.CreateComponent<DoubleComponent>(e1,
       DoubleComponent(0.0));
   ASSERT_NE(nullptr, e1c1);
   auto e1c2 =
     manager.CreateComponent<StringComponent>(e1, StringComponent("int"));
   ASSERT_NE(nullptr, e1c2);
+  auto e1c2Id = e1c2->TypeId();
 
   manager.RunSetAllComponentsUnchanged();
-  EXPECT_TRUE(manager.RemoveComponent(e1, e1c0->TypeId()));
-  EXPECT_TRUE(manager.RemoveComponent(e1, e1c2->TypeId()));
+  EXPECT_TRUE(manager.RemoveComponent(e1, e1c0Id));
+  EXPECT_TRUE(manager.RemoveComponent(e1, e1c2Id));
   // Serialize into a message
   msgs::SerializedStateMap stateMsg;
   manager.State(stateMsg);
@@ -2606,21 +2614,24 @@ TEST_P(FlecsComponentManagerFixture,
   auto e1c0 =
     manager.CreateComponent<IntComponent>(e1, IntComponent(123));
   ASSERT_NE(nullptr, e1c0);
+  auto e1c0Id = e1c0->TypeId();
   auto e1c1 =
     manager.CreateComponent<DoubleComponent>(e1, DoubleComponent(0.0));
   ASSERT_NE(nullptr, e1c1);
+  auto e1c1Id = e1c1->TypeId();
   auto e1c2 =
     manager.CreateComponent<StringComponent>(e1, StringComponent("foo"));
   ASSERT_NE(nullptr, e1c2);
+  auto e1c2Id = e1c2->TypeId();
 
   manager.RunSetAllComponentsUnchanged();
-  EXPECT_TRUE(manager.RemoveComponent(e1, e1c0->TypeId()));
-  EXPECT_TRUE(manager.RemoveComponent(e1, e1c2->TypeId()));
+  EXPECT_TRUE(manager.RemoveComponent(e1, e1c0Id));
+  EXPECT_TRUE(manager.RemoveComponent(e1, e1c2Id));
 
   // Serialize into a message, providing a list of types to be included
   msgs::SerializedStateMap stateMsg;
   std::unordered_set<Entity> entitySet{e1};
-  std::unordered_set<ComponentTypeId> types{e1c0->TypeId(), e1c1->TypeId()};
+  std::unordered_set<ComponentTypeId> types{e1c0Id, e1c1Id};
   manager.State(stateMsg, entitySet, types, false);
 
   // Check message
@@ -2635,7 +2646,7 @@ TEST_P(FlecsComponentManagerFixture,
     // Only component in message should be e1c2
     const auto &c0 = compIter->second;
     EXPECT_EQ(c0.remove(), true);
-    EXPECT_EQ(c0.type(), e1c0->TypeId());
+    EXPECT_EQ(c0.type(), e1c0Id);
   }
 }
 
@@ -2652,19 +2663,22 @@ TEST_P(FlecsComponentManagerFixture,
   auto e1c0 =
     manager.CreateComponent<IntComponent>(e1, IntComponent(123));
   ASSERT_NE(nullptr, e1c0);
+  auto e1c0Id = e1c0->TypeId();
   auto e1c1 =
     manager.CreateComponent<DoubleComponent>(e1, DoubleComponent(0.0));
   ASSERT_NE(nullptr, e1c1);
+  auto e1c1Id = e1c1->TypeId();
   auto e1c2 =
     manager.CreateComponent<StringComponent>(e1, StringComponent("int"));
   ASSERT_NE(nullptr, e1c2);
+  auto e1c2Id = e1c2->TypeId();
 
   // We use this map because the order in which components are iterated
   // through depends on the (undetermined) order of unordered multimaps
   std::map<ComponentTypeId, bool> expectationsBeforeRemoving;
-  expectationsBeforeRemoving.insert(std::make_pair(e1c0->TypeId(), false));
-  expectationsBeforeRemoving.insert(std::make_pair(e1c1->TypeId(), false));
-  expectationsBeforeRemoving.insert(std::make_pair(e1c2->TypeId(), false));
+  expectationsBeforeRemoving.insert(std::make_pair(e1c0Id, false));
+  expectationsBeforeRemoving.insert(std::make_pair(e1c1Id, false));
+  expectationsBeforeRemoving.insert(std::make_pair(e1c2Id, false));
 
   // Serialize server ECM into a message
   msgs::SerializedStateMap stateMsg;
@@ -2697,13 +2711,13 @@ TEST_P(FlecsComponentManagerFixture,
   }
 
   std::map<ComponentTypeId, bool> expectationsAfterRemoving;
-  expectationsAfterRemoving.insert(std::make_pair(e1c0->TypeId(), false));
-  expectationsAfterRemoving.insert(std::make_pair(e1c1->TypeId(), true));
-  expectationsAfterRemoving.insert(std::make_pair(e1c2->TypeId(), true));
+  expectationsAfterRemoving.insert(std::make_pair(e1c0Id, false));
+  expectationsAfterRemoving.insert(std::make_pair(e1c1Id, true));
+  expectationsAfterRemoving.insert(std::make_pair(e1c2Id, true));
 
   // Remove components and synchronize again
-  EXPECT_TRUE(manager.RemoveComponent(e1, e1c1->TypeId()));
-  EXPECT_TRUE(manager.RemoveComponent(e1, e1c2->TypeId()));
+  EXPECT_TRUE(manager.RemoveComponent(e1, e1c1Id));
+  EXPECT_TRUE(manager.RemoveComponent(e1, e1c2Id));
 
   msgs::SerializedStateMap newStateMsg;
   manager.State(newStateMsg);
@@ -2741,6 +2755,7 @@ TEST_P(FlecsComponentManagerFixture,
   }
 }
 
+/*
 /// \brief Helper function for comparing the same type of component across two
 /// different entities
 /// \param[in] _ecm The entity component manager

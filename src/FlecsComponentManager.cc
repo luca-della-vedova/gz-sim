@@ -115,6 +115,7 @@ class gz::sim::FlecsComponentManagerPrivate
   /// \param[in] _from Object to copy from
   public: void CopyFrom(const FlecsComponentManagerPrivate &_from);
 
+          */
   /// \brief Create a message for the removed components
   /// \param[in] _entity Entity with the removed components
   /// \param[in, out] _msg Entity message
@@ -133,7 +134,6 @@ class gz::sim::FlecsComponentManagerPrivate
       msgs::SerializedStateMap &_msg,
       const std::unordered_set<ComponentTypeId> &_types = {});
 
-          */
   /// \brief Add newly modified (created/modified/removed) components to
   /// modifiedComponents list. The entity is added to the list when it is not
   /// a newly created entity or is not an entity to be removed
@@ -1355,6 +1355,7 @@ void FlecsComponentManager::RebuildViews()
   }
 }
 
+*/
 //////////////////////////////////////////////////
 void FlecsComponentManagerPrivate::SetRemovedComponentsMsgs(Entity &_entity,
     msgs::SerializedEntity *_entityMsg,
@@ -1426,7 +1427,6 @@ void FlecsComponentManagerPrivate::SetRemovedComponentsMsgs(Entity &_entity,
   }
 }
 
-*/
 //////////////////////////////////////////////////
 void FlecsComponentManager::AddEntityToMessage(msgs::SerializedState &_msg,
     Entity _entity, const std::unordered_set<ComponentTypeId> &_types) const
@@ -1471,10 +1471,9 @@ void FlecsComponentManager::AddEntityToMessage(msgs::SerializedState &_msg,
     compMsg->set_component(ostr.str());
   });
 
-  // TODO(luca)
   // Add a component to the message and set it to be removed if the component
   // exists in the removedComponents map.
-  // this->dataPtr->SetRemovedComponentsMsgs(_entity, entityMsg, _types);
+  this->dataPtr->SetRemovedComponentsMsgs(_entity, entityMsg, _types);
 }
 
 //////////////////////////////////////////////////
@@ -1586,10 +1585,9 @@ void FlecsComponentManager::AddEntityToMessage(msgs::SerializedStateMap &_msg,
     compIter->second.set_component(ostr.str());
   });
 
-  // TODO(luca)
   // Add a component to the message and set it to be removed if the component
   // exists in the removedComponents map.
-  // this->dataPtr->SetRemovedComponentsMsgs(_entity, _msg, _types);
+  this->dataPtr->SetRemovedComponentsMsgs(_entity, _msg, _types);
 }
 
 //////////////////////////////////////////////////
@@ -1688,27 +1686,31 @@ void FlecsComponentManagerPrivate::CalculateStateThreadLoad()
   }
 }
 
+*/
 //////////////////////////////////////////////////
 msgs::SerializedState FlecsComponentManager::State(
     const std::unordered_set<Entity> &_entities,
     const std::unordered_set<ComponentTypeId> &_types) const
 {
   msgs::SerializedState stateMsg;
-  for (const auto &it : this->dataPtr->componentTypeIndex)
-  {
-    auto entity = it.first;
-    if (!_entities.empty() && _entities.find(entity) == _entities.end())
-    {
-      continue;
-    }
+  // TODO(luca) Avoid pushing to vector, just do everything in a single query?
+  // At least reserve size?
+  // Or just call inside?
+  std::vector<Entity> entitiesToAdd;
+  this->world.each<const SimEntity>([this, &_entities, &entitiesToAdd](flecs::entity e, const SimEntity&) {
+    const Entity gzEntity = e.id() - this->EntityOffset();
+    if (_entities.empty() || _entities.find(gzEntity) != _entities.end())
+      entitiesToAdd.push_back(gzEntity);
+  });
 
-    this->AddEntityToMessage(stateMsg, entity, _types);
+
+  for (const auto& e : entitiesToAdd) {
+    this->AddEntityToMessage(stateMsg, e, _types);
   }
 
   return stateMsg;
 }
 
-*/
 //////////////////////////////////////////////////
 void FlecsComponentManager::State(
     msgs::SerializedStateMap  &_state,
