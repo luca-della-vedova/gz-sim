@@ -215,7 +215,9 @@ namespace components
 
     public:
       using SyncFunc = std::function<void(flecs::entity&, const gz::sim::components::BaseComponent*)>;
-      using RegisterFunc = std::function<void(flecs::world&)>;
+      using RegisterFunc = std::function<void(flecs::world&,
+          std::unordered_map<ComponentTypeId, flecs::entity>&,
+          std::unordered_map<flecs::entity_t, ComponentTypeId>&)>;
 
       template <typename T>
       void RegisterType() {
@@ -226,25 +228,20 @@ namespace components
             _e.set<T>(T(std::remove_reference_t<typename T::Type>(static_cast<const T*>(_comp)->Data())));
           }
         };
-        this->registerMap[T::typeId] = [this](flecs::world& _world) {
-          this->SyncTypeIdMap<T>(_world);
+        this->registerMap[T::typeId] = [this](flecs::world& _world,
+            std::unordered_map<ComponentTypeId, flecs::entity>& _idToEnt,
+            std::unordered_map<flecs::entity_t, ComponentTypeId>& _entToId) {
+          this->SyncTypeIdMap<T>(_world, _idToEnt, _entToId);
         };
       }
 
       template <typename T>
-      void SyncTypeIdMap(flecs::world& _world) {
+      void SyncTypeIdMap(flecs::world& _world,
+          std::unordered_map<ComponentTypeId, flecs::entity>& _typeIdToEntity,
+          std::unordered_map<flecs::entity_t, ComponentTypeId>& _entityToTypeId) {
         flecs::entity compEntity = _world.component<T>();
-        this->typeIdToEntity.insert({{T::typeId, compEntity}});
-        this->entityToTypeId.insert({{compEntity.id(), T::typeId}});
-      }
-
-      // TODO(luca) call this on ECM destruction, or maybe there is a way to register a hook?
-      // Could also consider mapping to a std::optional<flecs::entity> to keep memory of the fact that
-      // the component _was_ registered but the entity is not valid anymore
-      // Or perhaps register all types in the world at ECM creation?
-      void ClearTypeIdMap() {
-        this->typeIdToEntity.clear();
-        this->entityToTypeId.clear();
+        _typeIdToEntity[T::typeId] = compEntity;
+        _entityToTypeId[compEntity.id()] = T::typeId;
       }
 
       // Returns the entity of the synced components
@@ -257,31 +254,18 @@ namespace components
         return true;
       }
 
-      void RegisterAllToFlecs(flecs::world& _world) {
+      void RegisterAllToFlecs(flecs::world& _world,
+          std::unordered_map<ComponentTypeId, flecs::entity>& _typeIdToEntity,
+          std::unordered_map<flecs::entity_t, ComponentTypeId>& _entityToTypeId) {
         for (const auto& mapIt : this->registerMap) {
-          mapIt.second(_world);
+          mapIt.second(_world, _typeIdToEntity, _entityToTypeId);
         }
-      }
-
-      std::optional<flecs::entity> TypeIdToEntity(const ComponentTypeId _id) {
-        const auto flecsEntityIt = this->typeIdToEntity.find(_id);
-        if (flecsEntityIt == this->typeIdToEntity.end())
-          return std::nullopt;
-        return flecsEntityIt->second;
-      }
-
-      std::optional<ComponentTypeId> EntityToTypeId(flecs::entity_t _e) {
-        const auto typeIdIt = this->entityToTypeId.find(_e);
-        if (typeIdIt == this->entityToTypeId.end())
-          return std::nullopt;
-        return typeIdIt->second;
       }
 
     private:
       std::unordered_map<ComponentTypeId, SyncFunc> syncMap;
       std::unordered_map<ComponentTypeId, RegisterFunc> registerMap;
-      std::unordered_map<ComponentTypeId, flecs::entity> typeIdToEntity;
-      std::unordered_map<flecs::entity_t, ComponentTypeId> entityToTypeId;
+
 
     /// \brief Get an instance of the singleton
     public: GZ_SIM_VISIBLE static Factory *Instance();

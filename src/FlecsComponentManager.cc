@@ -59,6 +59,23 @@ class gz::sim::FlecsComponentManagerPrivate
   // Flecs doesn't start from 0
   public: Entity entityOffset;
 
+  public: std::unordered_map<ComponentTypeId, flecs::entity> typeIdToEntity;
+  public: std::unordered_map<flecs::entity_t, ComponentTypeId> entityToTypeId;
+
+  public: std::optional<flecs::entity> TypeIdToEntity(const ComponentTypeId _id) const {
+    const auto flecsEntityIt = this->typeIdToEntity.find(_id);
+    if (flecsEntityIt == this->typeIdToEntity.end())
+      return std::nullopt;
+    return flecsEntityIt->second;
+  }
+
+  public: std::optional<ComponentTypeId> EntityToTypeId(flecs::entity_t _e) const {
+    const auto typeIdIt = this->entityToTypeId.find(_e);
+    if (typeIdIt == this->entityToTypeId.end())
+      return std::nullopt;
+    return typeIdIt->second;
+  }
+
   // Flecs stores components in entities that might change at runtime
   // public: std::unordered_map<ComponentTypeId, flecs::entity> typeIdToEntity;
 
@@ -323,14 +340,14 @@ FlecsComponentManager::FlecsComponentManager()
   this->world.component<NewEntity>();
   this->world.component<RemoveEntity>();
   this->world.component<ModifiedComponent>();
-  components::Factory::Instance()->RegisterAllToFlecs(this->world);
+  components::Factory::Instance()->RegisterAllToFlecs(this->world,
+      this->dataPtr->typeIdToEntity, this->dataPtr->entityToTypeId);
   this->dataPtr->entityOffset = world.entity().id();
 }
 
 //////////////////////////////////////////////////
 FlecsComponentManager::~FlecsComponentManager()
 {
-  components::Factory::Instance()->ClearTypeIdMap();
 }
 
 /*
@@ -842,7 +859,7 @@ bool FlecsComponentManager::RemoveComponent(
   const auto entity = _entity + this->dataPtr->entityOffset;
   // TODO(luca) consider just converting the typeId to a string and using it
   // as a name for internal flecs lookup
-  const auto compEntity = components::Factory::Instance()->TypeIdToEntity(_typeId);
+  const auto compEntity = this->dataPtr->TypeIdToEntity(_typeId);
   if (compEntity == std::nullopt)
     return false;
 
@@ -901,7 +918,7 @@ bool FlecsComponentManager::EntityHasComponentType(const Entity _entity,
   if (!this->HasEntity(_entity))
     return false;
 
-  const auto e = components::Factory::Instance()->TypeIdToEntity(_typeId);
+  const auto e = this->dataPtr->TypeIdToEntity(_typeId);
   if (e == std::nullopt)
     return false;
 
@@ -1103,7 +1120,7 @@ bool FlecsComponentManager::CreateComponentImplementation(
   bool updateData = true;
 
   // TODO(luca) this is duplicated with HasComponentType
-  const auto compEntity = components::Factory::Instance()->TypeIdToEntity(_componentTypeId);
+  const auto compEntity = this->dataPtr->TypeIdToEntity(_componentTypeId);
   if (compEntity == std::nullopt)
     return false;
 
@@ -1209,7 +1226,7 @@ const components::BaseComponent
 
   const auto entity = _entity + this->dataPtr->entityOffset;
 
-  const auto compEntity = components::Factory::Instance()->TypeIdToEntity(_type);
+  const auto compEntity = this->dataPtr->TypeIdToEntity(_type);
   if (compEntity == std::nullopt)
     return nullptr;
 
@@ -1269,7 +1286,7 @@ components::BaseComponent *FlecsComponentManager::ComponentImplementation(
 bool FlecsComponentManager::HasComponentType(
     const ComponentTypeId _typeId) const
 {
-  const auto compEntity = components::Factory::Instance()->TypeIdToEntity(_typeId);
+  const auto compEntity = this->dataPtr->TypeIdToEntity(_typeId);
   if (compEntity == std::nullopt)
     return false;
   return this->world.entity(*compEntity).is_alive();
@@ -1426,7 +1443,7 @@ void FlecsComponentManager::AddEntityToMessage(msgs::SerializedState &_msg,
   }
 
   world.entity(_entity + this->EntityOffset()).each([&](flecs::id component) {
-    const auto compId = components::Factory::Instance()->EntityToTypeId(component);
+    const auto compId = this->dataPtr->EntityToTypeId(component);
     if (!compId.has_value())
     {
       return;
@@ -1491,7 +1508,7 @@ void FlecsComponentManager::AddEntityToMessage(msgs::SerializedStateMap &_msg,
   // Insert all of the entity's components if the passed in types
   // set is empty
   world.entity(_entity + this->EntityOffset()).each([&](flecs::id component) {
-    const auto compId = components::Factory::Instance()->EntityToTypeId(component);
+    const auto compId = this->dataPtr->EntityToTypeId(component);
     if (!compId.has_value())
     {
       return;
@@ -2075,7 +2092,7 @@ std::unordered_set<ComponentTypeId> FlecsComponentManager::ComponentTypes(
     // TODO(luca) remove this and check for relationship if we use ChildOf
     if (!_id.is_entity())
       return;
-    const auto e = components::Factory::Instance()->EntityToTypeId(_id.entity());
+    const auto e = this->dataPtr->EntityToTypeId(_id.entity());
     if (e.has_value()) {
       result.insert(e.value());
     }

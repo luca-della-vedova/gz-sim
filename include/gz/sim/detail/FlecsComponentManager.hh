@@ -100,7 +100,6 @@ ComponentTypeT *FlecsComponentManager::CreateComponent(const Entity _entity,
     return nullptr;
   flecs::entity e = this->world.entity(_entity + this->EntityOffset());
   e.set<ComponentTypeT>(_data);
-  components::Factory::Instance()->SyncTypeIdMap<ComponentTypeT>(this->world);
   this->SetChanged(_entity, ComponentTypeT::typeId, ComponentState::OneTimeChange);
   this->MarkComponentAsRemoved(_entity, ComponentTypeT::typeId, false);
   return e.try_get_mut<ComponentTypeT>();
