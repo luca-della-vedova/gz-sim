@@ -383,13 +383,11 @@ Entity FlecsComponentManager::CreateEntity()
 /////////////////////////////////////////////////
 Entity FlecsComponentManagerPrivate::CreateEntityImplementation(flecs::world& world, Entity _entity)
 {
-  // Preallocate the size to make sure we don't allocate uninitialized memory
-  const auto maxId = std::max(world.get_info()->max_id, _entity + this->entityOffset);
-  world.dim(maxId);
-  std::cerr << "Trying to add entity " << _entity << " with offset " << this->entityOffset << std::endl;
-  auto e = world.entity(_entity + this->entityOffset);
+  ecs_entity_desc_t desc = {};
+  desc.id = _entity + this->entityOffset;
+  ecs_entity_init(world.c_ptr(), &desc);
+  auto e = world.entity(desc.id);
   return e.add<SimEntity>().add<NewEntity>().id() - this->entityOffset;
-  return e;
 }
 
 /*
@@ -1925,7 +1923,6 @@ void FlecsComponentManager::SetState(
 void FlecsComponentManager::SetState(
     const msgs::SerializedStateMap &_stateMsg)
 {
-  /*
   GZ_PROFILE("FlecsComponentManager::SetState Map");
   // Create / remove / update entities
   for (const auto &iter : _stateMsg.entities())
@@ -2016,7 +2013,6 @@ void FlecsComponentManager::SetState(
       }
     }
   }
-  */
 }
 /*
 
