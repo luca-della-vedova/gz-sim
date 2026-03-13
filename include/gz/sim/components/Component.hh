@@ -401,6 +401,9 @@ namespace components
   template <typename Identifier, typename Serializer>
   class Component<NoData, Identifier, Serializer> : public BaseComponent
   {
+    /// \brief Alias for DataType
+    public: using Type = NoData;
+
     /// \brief Components with no data are always equal to another instance of
     /// the same type.
     /// \param[in] _component Component to compare to

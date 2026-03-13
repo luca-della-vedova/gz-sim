@@ -2275,6 +2275,7 @@ TEST_P(EntityComponentManagerFixture,
   // Track change
   manager.SetChanged(e1, c1->TypeId(), ComponentState::PeriodicChange);
   manager.UpdatePeriodicChangeCache(changeTracker);
+  // CHANGED, this was the below line, seems it was the wrong type ID?
   EXPECT_EQ(changeTracker[c2->TypeId()].size(), 1u);
 
   // Entity removed cache should be updated.

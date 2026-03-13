@@ -53,6 +53,10 @@ namespace gz
     struct NewEntity { };
     // Marker for entities that are marked for removal
     struct RemoveEntity { };
+    // Marker for entities that had a component modified (i.e. added, removed, changed).
+    // This is used for state change detection and serialization.
+    // TODO(luca) consider using actual change detection for this.
+    struct ModifiedComponent { };
     inline namespace GZ_SIM_VERSION_NAMESPACE {
     // Forward declarations.
     class GZ_SIM_HIDDEN FlecsComponentManagerPrivate;
@@ -231,6 +235,10 @@ namespace gz
       /// \return True if the entity and component existed and the component was
       ///  removed.
       public: bool RemoveComponent(
+                  const Entity _entity, const ComponentTypeId &_typeId);
+
+              // Postprocessing after removing a component
+      public: bool PostRemoveComponent(
                   const Entity _entity, const ComponentTypeId &_typeId);
 
       /// \brief Remove a component from an entity based on a type.
@@ -521,6 +529,7 @@ namespace gz
       /// edges point from parent to children.
       /// \return Entity graph.
       public: const EntityGraph &Entities() const;
+              */
 
       /// \brief Get all entities which are descendants of a given entity,
       /// including the entity itself.
@@ -529,7 +538,6 @@ namespace gz
       /// empty if the entity doesn't exist.
       public: std::unordered_set<Entity> Descendants(Entity _entity) const;
 
-              */
       /// \brief Get a message with the serialized state of the given entities
       /// and components.
       /// \details The header of the message will not be populated, it is the
@@ -563,7 +571,6 @@ namespace gz
       /// \brief Get whether there are any entities marked to be removed.
       /// \return True if there are entities marked to be removed.
       public: bool HasEntitiesMarkedForRemoval() const;
-              /*
 
       /// \brief Get whether there are one-time component changes. These changes
       /// do not happen frequently and should be processed immediately.
@@ -591,6 +598,7 @@ namespace gz
       /// \sa FlecsComponentManager::PeriodicStateFromCache
       public: void UpdatePeriodicChangeCache(std::unordered_map<ComponentTypeId,
         std::unordered_set<Entity>>&) const;
+              /*
 
       /// \brief Set the absolute state of the ECM from a serialized message.
       /// Entities / components that are in the new state but not in the old
@@ -619,7 +627,6 @@ namespace gz
                   const std::unordered_set<Entity> &_entities = {},
                   const std::unordered_set<ComponentTypeId> &_types = {},
                   bool _full = false) const;
-              /*
 
       /// \brief Populate a message with relevant changes to the state given
       /// a periodic change cache.
@@ -634,6 +641,7 @@ namespace gz
                   const std::unordered_map<ComponentTypeId,
                         std::unordered_set<Entity>> &_cache) const;
 
+              /*
       /// \brief Get a message with the serialized state of all entities and
       /// components that are changing in the current iteration
       ///
@@ -674,7 +682,6 @@ namespace gz
       /// \return Component's current state
       public: sim::ComponentState ComponentState(const Entity _entity,
           const ComponentTypeId _typeId) const;
-              /*
 
       /// \brief All future entities will have an id that starts at _offset.
       /// This can be used to avoid entity id collisions, such as during log
@@ -682,6 +689,7 @@ namespace gz
       /// \param[in] _offset Offset value.
       public: void SetEntityCreateOffset(uint64_t _offset);
 
+              /*
       /// \brief Given a diff, apply it to this ECM. Note that for removed
       /// entities, this would mark them for removal instead of actually
       /// removing the entities.
@@ -707,20 +715,18 @@ namespace gz
       /// \brief Clear the list of newly added entities so that a call to
       /// EachAdded after this will have no entities to iterate.
       public: void ClearNewlyCreatedEntities();
-              /*
 
       /// \brief Clear the list of removed components so that a call to
       /// RemoveComponent doesn't make the list grow indefinitely.
       public: void ClearRemovedComponents();
 
-      */
       /// \brief Process all entity remove requests. This will remove
       /// entities and their components.
       public: void ProcessRemoveEntityRequests();
-              /*
 
       /// \brief Mark all components as not changed.
       public: void SetAllComponentsUnchanged();
+              /*
 
       /// Compute the diff between this FlecsComponentManager and _other at the
       /// entity level. This does not compute the diff between components of an
@@ -830,6 +836,9 @@ namespace gz
 
       /// \brief Gets the entity offset to apply to entity functions
       private: Entity EntityOffset() const;
+
+      /// \brief Marks the component as removed for changed state tracking
+      private: void MarkComponentAsRemoved(const Entity& _entity, const ComponentTypeId _id, bool _removed);
 
       /// \brief Add an entity and its components to a serialized state message.
       /// \param[out] _msg The state message.

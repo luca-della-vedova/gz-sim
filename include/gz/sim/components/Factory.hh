@@ -215,12 +215,19 @@ namespace components
 
     public:
       using SyncFunc = std::function<void(flecs::entity&, const gz::sim::components::BaseComponent*)>;
+      using RegisterFunc = std::function<void(flecs::world&)>;
 
       template <typename T>
       void RegisterType() {
-        this->syncMap[T::TypeId] = [this](flecs::entity& _e, const gz::sim::components::BaseComponent* _comp) {
-          _e.set<T>({static_cast<const T*>(_comp)->Data()});
-          this->SyncTypeIdMap<T>(_e.world());
+        this->syncMap[T::typeId] = [this](flecs::entity& _e, const gz::sim::components::BaseComponent* _comp) {
+          if constexpr (std::is_same_v<typename T::Type, gz::sim::components::NoData>) {
+            _e.add<T>();
+          } else {
+            _e.set<T>(T(std::remove_reference_t<typename T::Type>(static_cast<const T*>(_comp)->Data())));
+          }
+        };
+        this->registerMap[T::typeId] = [this](flecs::world& _world) {
+          this->SyncTypeIdMap<T>(_world);
         };
       }
 
@@ -250,6 +257,12 @@ namespace components
         return true;
       }
 
+      void RegisterAllToFlecs(flecs::world& _world) {
+        for (const auto& mapIt : this->registerMap) {
+          mapIt.second(_world);
+        }
+      }
+
       std::optional<flecs::entity> TypeIdToEntity(const ComponentTypeId _id) {
         const auto flecsEntityIt = this->typeIdToEntity.find(_id);
         if (flecsEntityIt == this->typeIdToEntity.end())
@@ -266,6 +279,7 @@ namespace components
 
     private:
       std::unordered_map<ComponentTypeId, SyncFunc> syncMap;
+      std::unordered_map<ComponentTypeId, RegisterFunc> registerMap;
       std::unordered_map<ComponentTypeId, flecs::entity> typeIdToEntity;
       std::unordered_map<flecs::entity_t, ComponentTypeId> entityToTypeId;
 
@@ -292,6 +306,7 @@ namespace components
       // only add them to the maps below once.
       ComponentTypeT::typeId = typeHash;
       ComponentTypeT::typeName = _type;
+      this->RegisterType<ComponentTypeT>();
 
       // Check if component has already been registered by another library
       auto runtimeName = typeid(ComponentTypeT).name();

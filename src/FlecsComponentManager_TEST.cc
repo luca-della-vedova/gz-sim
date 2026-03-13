@@ -99,7 +99,6 @@ class FlecsCompMgrTest : public FlecsComponentManager
   {
     this->ProcessRemoveEntityRequests();
   }
-          /*
   public: void RunSetAllComponentsUnchanged()
   {
     this->SetAllComponentsUnchanged();
@@ -109,6 +108,7 @@ class FlecsCompMgrTest : public FlecsComponentManager
     this->ClearRemovedComponents();
   }
 
+          /*
   public: EntityComponentManagerDiff RunComputeDiff(
               const FlecsComponentManager &_other) const
   {
@@ -1773,7 +1773,6 @@ TEST_P(FlecsComponentManagerFixture, GZ_UTILS_TEST_DISABLED_ON_WIN32(State))
   // Deserialize into a new ECM
   FlecsComponentManager newEcm;
   newEcm.SetState(stateMsg);
-  /*
 
   // Check ECM
   {
@@ -1936,10 +1935,8 @@ TEST_P(FlecsComponentManagerFixture, GZ_UTILS_TEST_DISABLED_ON_WIN32(State))
     EXPECT_EQ(IntComponent::typeId, e4c0Msg.type());
     EXPECT_EQ(e4c0, std::stoi(e4c0Msg.component()));
   }
-  */
 }
 
-/*
 /////////////////////////////////////////////////
 TEST_P(FlecsComponentManagerFixture,
        GZ_UTILS_TEST_ENABLED_ONLY_ON_LINUX(ChangedStateComponents))
@@ -2228,6 +2225,10 @@ TEST_P(FlecsComponentManagerFixture,
 {
   Entity e1 = manager.CreateEntity();
   auto c1 = manager.CreateComponent<IntComponent>(e1, IntComponent(123));
+  // CHANGED
+  // There is no pointer stability in flecs, we need to fetch what we need
+  // from this component first and stop dereferencing it
+  auto cId = c1->TypeId();
 
   std::unordered_map<ComponentTypeId,
                         std::unordered_set<Entity>> changeTracker;
@@ -2237,20 +2238,20 @@ TEST_P(FlecsComponentManagerFixture,
   EXPECT_EQ(changeTracker.size(), 0u);
 
   // Create a periodic change.
-  manager.SetChanged(e1, c1->TypeId(), ComponentState::PeriodicChange);
+  manager.SetChanged(e1, cId, ComponentState::PeriodicChange);
 
   // 1 periodic change, should be reflected in cache.
   manager.UpdatePeriodicChangeCache(changeTracker);
   EXPECT_EQ(changeTracker.size(), 1u);
-  EXPECT_EQ(changeTracker[c1->TypeId()].count(e1), 1u);
+  EXPECT_EQ(changeTracker[cId].count(e1), 1u);
 
   manager.RunSetAllComponentsUnchanged();
 
   // Has periodic change. Cache should be full.
   manager.UpdatePeriodicChangeCache(changeTracker);
   EXPECT_EQ(changeTracker.size(), 1u);
-  EXPECT_EQ(changeTracker[c1->TypeId()].count(e1), 1u);
-  EXPECT_EQ(changeTracker[c1->TypeId()].size(), 1u);
+  EXPECT_EQ(changeTracker[cId].count(e1), 1u);
+  EXPECT_EQ(changeTracker[cId].size(), 1u);
 
   // Serialize state
   msgs::SerializedStateMap state;
@@ -2259,14 +2260,14 @@ TEST_P(FlecsComponentManagerFixture,
   EXPECT_EQ(
     state.entities().find(e1)->second.components().size(), 1u);
   EXPECT_NE(state.entities().find(e1)->second
-      .components().find(c1->TypeId()),
+      .components().find(cId),
     state.entities().find(e1)->second.components().end());
 
   // Component removed cache should be updated.
   manager.RemoveComponent<IntComponent>(e1);
   manager.UpdatePeriodicChangeCache(changeTracker);
   EXPECT_EQ(changeTracker.size(), 1u);
-  EXPECT_EQ(changeTracker[c1->TypeId()].size(), 0u);
+  EXPECT_EQ(changeTracker[cId].size(), 0u);
 
   manager.RunSetAllComponentsUnchanged();
 
@@ -2275,17 +2276,17 @@ TEST_P(FlecsComponentManagerFixture,
   manager.UpdatePeriodicChangeCache(changeTracker);
 
   // Cache does not track additions, only PeriodicChanges
-  EXPECT_EQ(changeTracker[c2->TypeId()].size(), 0u);
+  EXPECT_EQ(changeTracker[cId].size(), 0u);
 
   // Track change
-  manager.SetChanged(e1, c1->TypeId(), ComponentState::PeriodicChange);
+  manager.SetChanged(e1, cId, ComponentState::PeriodicChange);
   manager.UpdatePeriodicChangeCache(changeTracker);
-  EXPECT_EQ(changeTracker[c2->TypeId()].size(), 1u);
+  EXPECT_EQ(changeTracker[cId].size(), 1u);
 
   // Entity removed cache should be updated.
   manager.RequestRemoveEntity(e1);
   manager.UpdatePeriodicChangeCache(changeTracker);
-  EXPECT_EQ(changeTracker[c2->TypeId()].size(), 0u);
+  EXPECT_EQ(changeTracker[cId].size(), 0u);
 }
 
 //////////////////////////////////////////////////
@@ -2299,17 +2300,21 @@ TEST_P(FlecsComponentManagerFixture,
 
   // Add components to each entity
   auto c1 = manager.CreateComponent<IntComponent>(e1, IntComponent(123));
+  // CHANGED
+  // There is no pointer stability in flecs, don't dereference after adding other components
+  auto c1Id = c1->TypeId();
   ASSERT_NE(nullptr, c1);
   auto c2 = manager.CreateComponent<IntComponent>(e2, IntComponent(456));
+  auto c2Id = c2->TypeId();
   ASSERT_NE(nullptr, c2);
 
   EXPECT_TRUE(manager.HasOneTimeComponentChanges());
   EXPECT_FALSE(manager.HasPeriodicComponentChanges());
   EXPECT_EQ(0u, manager.ComponentTypesWithPeriodicChanges().size());
   EXPECT_EQ(ComponentState::OneTimeChange,
-      manager.ComponentState(e1, c1->TypeId()));
+      manager.ComponentState(e1, c1Id));
   EXPECT_EQ(ComponentState::OneTimeChange,
-      manager.ComponentState(e2, c2->TypeId()));
+      manager.ComponentState(e2, c2Id));
   EXPECT_EQ(ComponentState::NoChange, manager.ComponentState(999, 888));
   EXPECT_EQ(ComponentState::NoChange, manager.ComponentState(e1, 888));
 
@@ -2320,24 +2325,24 @@ TEST_P(FlecsComponentManagerFixture,
   EXPECT_FALSE(manager.HasPeriodicComponentChanges());
   EXPECT_EQ(0u, manager.ComponentTypesWithPeriodicChanges().size());
   EXPECT_EQ(ComponentState::NoChange,
-      manager.ComponentState(e1, c1->TypeId()));
+      manager.ComponentState(e1, c1Id));
   EXPECT_EQ(ComponentState::NoChange,
-      manager.ComponentState(e2, c2->TypeId()));
+      manager.ComponentState(e2, c2Id));
 
   // Marking a component that isn't changed as unchanged again shouldn't effect
   // the ecm's changed state
   manager.RunClearNewlyCreatedEntities();
   EXPECT_EQ(0, manager.ChangedState().entities_size());
-  manager.SetChanged(e1, c1->TypeId(), ComponentState::NoChange);
+  manager.SetChanged(e1, c1Id, ComponentState::NoChange);
   EXPECT_EQ(ComponentState::NoChange,
-      manager.ComponentState(e1, c1->TypeId()));
+      manager.ComponentState(e1, c1Id));
   EXPECT_FALSE(manager.HasOneTimeComponentChanges());
   EXPECT_FALSE(manager.HasPeriodicComponentChanges());
   EXPECT_EQ(0u, manager.ComponentTypesWithPeriodicChanges().size());
   EXPECT_EQ(0, manager.ChangedState().entities_size());
 
   // Mark as changed
-  manager.SetChanged(e1, c1->TypeId(), ComponentState::PeriodicChange);
+  manager.SetChanged(e1, c1Id, ComponentState::PeriodicChange);
 
   // check that only e1 c1 is serialized into a message
   msgs::SerializedStateMap stateMsg;
@@ -2356,7 +2361,7 @@ TEST_P(FlecsComponentManagerFixture,
     EXPECT_EQ(123, std::stoi(e1c1Msg.component()));
   }
 
-  manager.SetChanged(e2, c2->TypeId(), ComponentState::OneTimeChange);
+  manager.SetChanged(e2, c2Id, ComponentState::OneTimeChange);
 
   EXPECT_TRUE(manager.HasOneTimeComponentChanges());
   // Expect a single component type to be marked as PeriodicChange
@@ -2365,24 +2370,24 @@ TEST_P(FlecsComponentManagerFixture,
   EXPECT_EQ(IntComponent().TypeId(),
       *manager.ComponentTypesWithPeriodicChanges().begin());
   EXPECT_EQ(ComponentState::PeriodicChange,
-      manager.ComponentState(e1, c1->TypeId()));
+      manager.ComponentState(e1, c1Id));
   EXPECT_EQ(ComponentState::OneTimeChange,
-      manager.ComponentState(e2, c2->TypeId()));
+      manager.ComponentState(e2, c2Id));
 
   // Remove components
-  EXPECT_TRUE(manager.RemoveComponent(e1, c1->TypeId()));
+  EXPECT_TRUE(manager.RemoveComponent(e1, c1Id));
 
   EXPECT_TRUE(manager.HasOneTimeComponentChanges());
   EXPECT_FALSE(manager.HasPeriodicComponentChanges());
   EXPECT_EQ(0u, manager.ComponentTypesWithPeriodicChanges().size());
   EXPECT_EQ(ComponentState::NoChange,
-      manager.ComponentState(e1, c1->TypeId()));
+      manager.ComponentState(e1, c1Id));
 
-  EXPECT_TRUE(manager.RemoveComponent(e2, c2->TypeId()));
+  EXPECT_TRUE(manager.RemoveComponent(e2, c2Id));
 
   EXPECT_FALSE(manager.HasOneTimeComponentChanges());
   EXPECT_EQ(ComponentState::NoChange,
-      manager.ComponentState(e2, c2->TypeId()));
+      manager.ComponentState(e2, c2Id));
 }
 
 //////////////////////////////////////////////////
@@ -2394,16 +2399,19 @@ TEST_P(FlecsComponentManagerFixture,
   EXPECT_EQ(1u, entity);
 
   // Apply an offset.
-  manager.SetEntityCreateOffset(1000);
+  manager.SetEntityCreateOffset(10000);
   Entity entity2 = manager.CreateEntity();
-  EXPECT_EQ(1001u, entity2);
+  EXPECT_EQ(10001u, entity2);
 
   // Apply a lower offset, prints warning but goes through.
-  manager.SetEntityCreateOffset(500);
+  // CHANGED
+  // 500 was too low and used in flecs, increased
+  manager.SetEntityCreateOffset(5000);
   Entity entity3 = manager.CreateEntity();
-  EXPECT_EQ(501u, entity3);
+  EXPECT_EQ(5001u, entity3);
 }
 
+/*
 //////////////////////////////////////////////////
 TEST_P(FlecsComponentManagerFixture,
        GZ_UTILS_TEST_DISABLED_ON_WIN32(
@@ -2413,23 +2421,28 @@ TEST_P(FlecsComponentManagerFixture,
   Entity e1 = manager.CreateEntity();
   auto e1c0 =
     manager.CreateComponent<IntComponent>(e1, IntComponent(123));
+  // CHANGED
+  // no pointer stability in flecs, fetch data before changing archetype
+  auto e1c0Id = e1c0->TypeId();
   ASSERT_NE(nullptr, e1c0);
   auto e1c1 =
     manager.CreateComponent<DoubleComponent>(e1, DoubleComponent(0.0));
+  auto e1c1Id = e1c1->TypeId();
   ASSERT_NE(nullptr, e1c1);
   auto e1c2 =
     manager.CreateComponent<StringComponent>(e1, StringComponent("int"));
+  auto e1c2Id = e1c2->TypeId();
   ASSERT_NE(nullptr, e1c2);
 
   // We use this map because the order in which components are iterated
   // through depends on the (undetermined) order of unordered multimaps
   std::map<ComponentTypeId, bool> expectations;
-  expectations.insert(std::make_pair(e1c0->TypeId(), false));
-  expectations.insert(std::make_pair(e1c1->TypeId(), true));
-  expectations.insert(std::make_pair(e1c2->TypeId(), true));
+  expectations.insert(std::make_pair(e1c0Id, false));
+  expectations.insert(std::make_pair(e1c1Id, true));
+  expectations.insert(std::make_pair(e1c2Id, true));
 
-  EXPECT_TRUE(manager.RemoveComponent(e1, e1c1->TypeId()));
-  EXPECT_TRUE(manager.RemoveComponent(e1, e1c2->TypeId()));
+  EXPECT_TRUE(manager.RemoveComponent(e1, e1c1Id));
+  EXPECT_TRUE(manager.RemoveComponent(e1, e1c2Id));
 
   // Serialize into a message
   msgs::SerializedStateMap stateMsg;
