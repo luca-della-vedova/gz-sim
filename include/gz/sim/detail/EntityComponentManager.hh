@@ -352,6 +352,7 @@ void EntityComponentManager::Each(typename identity<std::function<
     bool(const Entity &_entity, const ComponentTypeTs *...)>>::type _f) const
 {
   flecs::query<const ComponentTypeTs...> q = this->world.query<const ComponentTypeTs...>();
+  this->world.defer_begin();
   q.run([&](flecs::iter& _it) {
     while (_it.next()) {
       for (auto i : _it) {
@@ -365,6 +366,7 @@ void EntityComponentManager::Each(typename identity<std::function<
       }
     }
   });
+  this->world.defer_end();
 }
 
 //////////////////////////////////////////////////
@@ -373,6 +375,7 @@ void EntityComponentManager::Each(typename identity<std::function<
     bool(const Entity &_entity, ComponentTypeTs *...)>>::type _f)
 {
   flecs::query<ComponentTypeTs...> q = this->world.query<ComponentTypeTs...>();
+  this->world.defer_begin();
   q.run([&](flecs::iter& _it) {
     while (_it.next()) {
       for (auto i : _it) {
@@ -386,6 +389,7 @@ void EntityComponentManager::Each(typename identity<std::function<
       }
     }
   });
+  this->world.defer_end();
 }
 
 //////////////////////////////////////////////////
@@ -402,6 +406,7 @@ void EntityComponentManager::EachNew(typename identity<std::function<
     bool(const Entity &_entity, ComponentTypeTs *...)>>::type _f)
 {
   flecs::query<NewEntity, ComponentTypeTs...> q = this->world.query<NewEntity, ComponentTypeTs...>();
+  this->world.defer_begin();
   q.run([&](flecs::iter& _it) {
     while (_it.next()) {
       for (auto i : _it) {
@@ -415,6 +420,7 @@ void EntityComponentManager::EachNew(typename identity<std::function<
       }
     }
   });
+  this->world.defer_end();
 }
 
 //////////////////////////////////////////////////
@@ -423,6 +429,7 @@ void EntityComponentManager::EachNew(typename identity<std::function<
     bool(const Entity &_entity, const ComponentTypeTs *...)>>::type _f) const
 {
   flecs::query<NewEntity, const ComponentTypeTs...> q = this->world.query<NewEntity, const ComponentTypeTs...>();
+  this->world.defer_begin();
   q.run([&](flecs::iter& _it) {
     while (_it.next()) {
       for (auto i : _it) {
@@ -436,6 +443,7 @@ void EntityComponentManager::EachNew(typename identity<std::function<
       }
     }
   });
+  this->world.defer_end();
 }
 
 //////////////////////////////////////////////////
@@ -444,6 +452,7 @@ void EntityComponentManager::EachRemoved(typename identity<std::function<
     bool(const Entity &_entity, const ComponentTypeTs *...)>>::type _f) const
 {
   flecs::query<RemoveEntity, const ComponentTypeTs...> q = this->world.query<RemoveEntity, const ComponentTypeTs...>();
+  this->world.defer_begin();
   q.run([&](flecs::iter& _it) {
     while (_it.next()) {
       for (auto i : _it) {
@@ -457,6 +466,7 @@ void EntityComponentManager::EachRemoved(typename identity<std::function<
       }
     }
   });
+  this->world.defer_end();
 }
 
 /*

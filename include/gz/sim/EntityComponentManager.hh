@@ -816,11 +816,11 @@ namespace gz
           Entity _entity,
           const std::unordered_set<ComponentTypeId> &_types = {}) const;
 
-      /// \brief Private data pointer.
-      private: std::unique_ptr<EntityComponentManagerPrivate> dataPtr;
-
       // TODO(luca) can we put this in the dataPtr? Tough because a templated function needs to access it to operate on components
       private: flecs::world world;
+
+      /// \brief Private data pointer.
+      private: std::unique_ptr<EntityComponentManagerPrivate> dataPtr;
 
       /// \brief Gets the entity offset to apply to entity functions
       private: Entity EntityOffset() const;
