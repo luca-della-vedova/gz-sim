@@ -183,7 +183,16 @@ Entity EntityComponentManager::EntityByComponents(
     const ComponentTypeTs &..._desiredComponents) const
 {
   Entity result{kNullEntity};
-  flecs::query<const ComponentTypeTs...> q = this->world.query<const ComponentTypeTs...>();
+  auto key = detail::ComponentTypeKey{ComponentTypeTs::typeId...};
+  const flecs::query_t* q_ptr = this->QueryPtr(key);
+  if (q_ptr == nullptr)
+  {
+    flecs::query<const ComponentTypeTs...> q = this->world.query<const ComponentTypeTs...>();
+    this->SetQueryPtr(key, q);
+    q_ptr = q.c_ptr();
+  }
+
+  flecs::query<const ComponentTypeTs...> q(const_cast<flecs::query_t*>(q_ptr));
   q.run([&](flecs::iter& _it) {
     while (_it.next()) {
       for (auto i : _it) {
@@ -223,7 +232,16 @@ std::vector<Entity> EntityComponentManager::EntitiesByComponents(
     const ComponentTypeTs &..._desiredComponents) const
 {
   std::vector<Entity> result;
-  flecs::query<const ComponentTypeTs...> q = this->world.query<const ComponentTypeTs...>();
+  auto key = detail::ComponentTypeKey{ComponentTypeTs::typeId...};
+  const flecs::query_t* q_ptr = this->QueryPtr(key);
+  if (q_ptr == nullptr)
+  {
+    flecs::query<const ComponentTypeTs...> q = this->world.query<const ComponentTypeTs...>();
+    this->SetQueryPtr(key, q);
+    q_ptr = q.c_ptr();
+  }
+
+  flecs::query<const ComponentTypeTs...> q(const_cast<flecs::query_t*>(q_ptr));
   q.run([&](flecs::iter& _it) {
     while (_it.next()) {
       for (auto i : _it) {
@@ -351,7 +369,16 @@ template<typename ...ComponentTypeTs>
 void EntityComponentManager::Each(typename identity<std::function<
     bool(const Entity &_entity, const ComponentTypeTs *...)>>::type _f) const
 {
-  flecs::query<const ComponentTypeTs...> q = this->world.query<const ComponentTypeTs...>();
+  auto key = detail::ComponentTypeKey{ComponentTypeTs::typeId...};
+  const flecs::query_t* q_ptr = this->QueryPtr(key);
+  if (q_ptr == nullptr)
+  {
+    flecs::query<const ComponentTypeTs...> q = this->world.query<const ComponentTypeTs...>();
+    this->SetQueryPtr(key, q);
+    q_ptr = q.c_ptr();
+  }
+
+  flecs::query<const ComponentTypeTs...> q(const_cast<flecs::query_t*>(q_ptr));
   this->world.defer_begin();
   q.run([&](flecs::iter& _it) {
     while (_it.next()) {
@@ -374,7 +401,16 @@ template<typename ...ComponentTypeTs>
 void EntityComponentManager::Each(typename identity<std::function<
     bool(const Entity &_entity, ComponentTypeTs *...)>>::type _f)
 {
-  flecs::query<ComponentTypeTs...> q = this->world.query<ComponentTypeTs...>();
+  auto key = detail::ComponentTypeKey{ComponentTypeTs::typeId...};
+  const flecs::query_t* q_ptr = this->QueryPtr(key);
+  if (q_ptr == nullptr)
+  {
+    flecs::query<ComponentTypeTs...> q = this->world.query<ComponentTypeTs...>();
+    this->SetQueryPtr(key, q);
+    q_ptr = q.c_ptr();
+  }
+
+  flecs::query<ComponentTypeTs...> q(const_cast<flecs::query_t*>(q_ptr));
   this->world.defer_begin();
   q.run([&](flecs::iter& _it) {
     while (_it.next()) {
