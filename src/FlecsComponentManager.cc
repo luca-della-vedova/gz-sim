@@ -76,6 +76,15 @@ class gz::sim::FlecsComponentManagerPrivate
     return typeIdIt->second;
   }
 
+  public: std::vector<Entity> Entities(const flecs::world& world) const {
+    // Reserve if count is fast?
+    std::vector<Entity> entities;
+    world.each<const SimEntity>([&entities, this](flecs::id id, const SimEntity&) {
+      entities.push_back(id - this->entityOffset);
+    });
+    return entities;
+  }
+
   // Flecs stores components in entities that might change at runtime
   // public: std::unordered_map<ComponentTypeId, flecs::entity> typeIdToEntity;
 
@@ -107,6 +116,7 @@ class gz::sim::FlecsComponentManagerPrivate
   /// `AddEntityToMessage`.
   public: void CalculateStateThreadLoad();
 
+          */
   /// \brief Copies the contents of `_from` into this object.
   /// \note This is a member function instead of a copy constructor so that
   /// it can have additional parameters if the need arises in the future.
@@ -115,7 +125,6 @@ class gz::sim::FlecsComponentManagerPrivate
   /// \param[in] _from Object to copy from
   public: void CopyFrom(const FlecsComponentManagerPrivate &_from);
 
-          */
   /// \brief Create a message for the removed components
   /// \param[in] _entity Entity with the removed components
   /// \param[in, out] _msg Entity message
@@ -185,9 +194,6 @@ class gz::sim::FlecsComponentManagerPrivate
   /// entities that had this type of component changed.
   public: std::unordered_map<ComponentTypeId, std::unordered_set<Entity>>
             oneTimeChangedComponents;
-
-  /// \brief Entities that have just been created
-  public: std::unordered_set<Entity> newlyCreatedEntities;
           /*
 
   /// \brief Entities that have components newly modified
@@ -197,9 +203,6 @@ class gz::sim::FlecsComponentManagerPrivate
   public: std::unordered_set<Entity> modifiedComponents;
 
   */
-  /// \brief A mutex to protect newly created entities.
-  public: std::mutex entityCreatedMutex;
-
   /// \brief A mutex to protect entity remove.
   public: std::mutex entityRemoveMutex;
           /*
@@ -338,8 +341,22 @@ FlecsComponentManager::FlecsComponentManager()
   this->world.component<RemoveEntity>();
   this->world.component<ModifiedComponent>();
   this->world.component<PinnedEntity>();
+  // Hook for ParentEntity removal.
+  this->world.observer<components::ParentEntity>()
+    // TODO(luca) OnSet
+    .event(flecs::OnRemove)
+    .each([this](flecs::iter& it, std::size_t i, components::ParentEntity&) {
+      const auto currentParent = it.entity(i).parent();
+      if (currentParent && currentParent.is_alive()) {
+        it.entity(i).remove(flecs::ChildOf, currentParent);
+      }
+    });
+  // TODO(luca) consider making ParentEntity a relationship? But might be tricky
+  // because of how flecs encodes relationships in the entity value itself
   components::Factory::Instance()->RegisterAllToFlecs(this->world,
       this->dataPtr->typeIdToEntity, this->dataPtr->entityToTypeId);
+  // TODO(luca) this is brittle, different component registration might introduce
+  // conflicting offsets between GUI and Server
   this->dataPtr->entityOffset = world.entity().id();
 }
 
@@ -348,45 +365,18 @@ FlecsComponentManager::~FlecsComponentManager()
 {
 }
 
-/*
 //////////////////////////////////////////////////
 void FlecsComponentManagerPrivate::CopyFrom(
     const FlecsComponentManagerPrivate &_from)
 {
-  this->createdCompTypes = _from.createdCompTypes;
-  this->entities = _from.entities;
   this->periodicChangedComponents = _from.periodicChangedComponents;
   this->oneTimeChangedComponents = _from.oneTimeChangedComponents;
-  this->newlyCreatedEntities = _from.newlyCreatedEntities;
-  this->toRemoveEntities = _from.toRemoveEntities;
-  this->modifiedComponents = _from.modifiedComponents;
-  this->removeAllEntities = _from.removeAllEntities;
-  this->views.clear();
-  this->lockAddEntitiesToViews = _from.lockAddEntitiesToViews;
-  this->descendantCache.clear();
-  this->entityCount = _from.entityCount;
   this->removedComponents = _from.removedComponents;
   this->componentsMarkedAsRemoved = _from.componentsMarkedAsRemoved;
-
-  for (const auto &[entity, comps] : _from.componentStorage)
-  {
-    this->componentStorage[entity].clear();
-    for (const auto &comp : comps)
-    {
-      this->componentStorage[entity].emplace_back(comp->Clone());
-    }
-  }
-  this->componentTypeIndex = _from.componentTypeIndex;
-  this->componentTypeIndexIterators.clear();
-  this->componentTypeIndexDirty = true;
-
-  // Not copying maps related to cloning since they are transient variables
-  // that are used as return values of some member functions.
-
-  this->pinnedEntities = _from.pinnedEntities;
+  // highestAllocatedEntity is autocomputed from CreateEntity
+  // and doesn't need to be copied explicitly
 }
 
-*/
 //////////////////////////////////////////////////
 size_t FlecsComponentManager::EntityCount() const
 {
@@ -1066,9 +1056,8 @@ bool FlecsComponentManager::SetParentEntity(const Entity _child,
 
   if (_parent == kNullEntity)
   {
-    const auto currentParent = this->world.entity(_child + this->EntityOffset()).parent();
     // TODO(luca) Fully remove ParentEntity for ChildOf
-    this->world.entity(_child + this->EntityOffset()).remove(flecs::ChildOf, currentParent).remove<components::ParentEntity>();
+    this->world.entity(_child + this->EntityOffset()).remove<components::ParentEntity>();
     return true;
   }
 
@@ -1137,7 +1126,6 @@ bool FlecsComponentManager::CreateComponentImplementation(
   }
   else
   {
-    std::cerr << "There is a component!" << std::endl;
     // if the pre-existing component is marked as removed, this means that the
     // component was added to the entity previously, but later removed. In this
     // case, a re-addition of the component is occurring. If the pre-existing
@@ -1600,11 +1588,9 @@ msgs::SerializedState FlecsComponentManager::ChangedState() const
     return true;
   });
   this->world.each<const ModifiedComponent>([this, &stateMsg, &i](flecs::entity e, const ModifiedComponent&) {
-      std::cerr << "Found modified component" << std::endl;
       this->AddEntityToMessage(stateMsg, e);
       ++i;
   });
-  std::cerr << "Total number of entities is " << i << std::endl;
   return stateMsg;
 }
 
@@ -1962,7 +1948,6 @@ void FlecsComponentManager::SetState(
         continue;
       }
 
-      std::cerr << "Getting component" << std::endl;
       // Get Component
       components::BaseComponent *comp =
         this->ComponentImplementation(entity, compIter.first);
@@ -1970,7 +1955,6 @@ void FlecsComponentManager::SetState(
       // Create if new
       if (nullptr == comp)
       {
-        std::cerr << "Component not found, creating it" << std::endl;
         std::istringstream istr(compMsg.component());
 
         // Create component
@@ -1987,7 +1971,6 @@ void FlecsComponentManager::SetState(
           entity, newComp->TypeId(), newComp.get());
         if (updateData)
         {
-          std::cerr << "Component created, getting it" << std::endl;
           // Set comp so we deserialize the data below again
           comp = this->ComponentImplementation(entity, compIter.first);
         }
@@ -1996,7 +1979,6 @@ void FlecsComponentManager::SetState(
       // Update component value
       if (comp)
       {
-        std::cerr << "Got component in the end, deserializing and setting" << std::endl;
         std::istringstream istr(compMsg.component());
         comp->Deserialize(istr);
         this->SetChanged(entity, compIter.first,
@@ -2252,11 +2234,46 @@ void FlecsComponentManager::UnpinAllEntities()
   this->world.remove_all<PinnedEntity>();
 }
 
-/*
 /////////////////////////////////////////////////
 void FlecsComponentManager::CopyFrom(const FlecsComponentManager &_fromEcm)
 {
+  // TODO(luca)
+  // Copy world here. For now we will jut copy all Sim Entity entities
+  // but this might break down once we introduce different processes that register
+  // different sets of components since each registration will introduce a new entity
+  // What we might need instead at that point, is reserve a set of entity values for simulation.
+  /*
+  this->world.from_json(_fromEcm.world.to_json());
+  std::cerr << _fromEcm.world.to_json() << std::endl;
+  */
+  this->world.delete_with<SimEntity>();
   this->dataPtr->CopyFrom(*_fromEcm.dataPtr);
+
+  // TODO(luca) optional query instead of has call for perf
+  _fromEcm.world.each<SimEntity>([&](flecs::entity e, const SimEntity&) {
+    flecs::entity destEntity = this->world.entity(this->dataPtr->CreateEntityImplementation(this->world, e.id() - _fromEcm.EntityOffset()) + this->EntityOffset());
+    destEntity.add<SimEntity>();
+    if (e.has<NewEntity>()) destEntity.add<NewEntity>();
+    if (e.has<RemoveEntity>()) destEntity.add<RemoveEntity>();
+    if (e.has<ModifiedComponent>()) destEntity.add<ModifiedComponent>();
+    if (e.has<PinnedEntity>()) destEntity.add<PinnedEntity>();
+
+    e.each([&](flecs::id compId) {
+      // This ignores relationships, TODO(luca) register a OnSet hook for ParentEntity that registers ChildOf to fix relationship cloning
+      if (!compId.is_entity()) {
+        return;
+      }
+      const auto typeId = _fromEcm.dataPtr->EntityToTypeId(compId.entity());
+      if (typeId) {
+        const auto* data = e.get(compId);
+        // TODO(luca) this is fallible, log?
+        // Cast safe because this was a registered component
+        components::Factory::Instance()->SyncComponent(destEntity, *typeId, static_cast<const components::BaseComponent*>(data));
+      } else {
+        // Not registered so cannot be copied, warn?
+      }
+    });
+  });
 }
 
 /////////////////////////////////////////////////
@@ -2264,25 +2281,23 @@ EntityComponentManagerDiff FlecsComponentManager::ComputeEntityDiff(
     const FlecsComponentManager &_other) const
 {
   EntityComponentManagerDiff diff;
-  for (const auto &item : _other.dataPtr->entities.Vertices())
+  for (const auto &e: _other.dataPtr->Entities(_other.world))
   {
-    const auto &v = item.second.get();
-    if (!this->dataPtr->entities.VertexFromId(v.Id()).Valid())
+    if (!this->HasEntity(e))
     {
       // In `_other` but not in `this`, so insert the entity as an "added"
       // entity.
-      diff.InsertAddedEntity(v.Data());
+      diff.InsertAddedEntity(e);
     }
   }
 
-  for (const auto &item : this->dataPtr->entities.Vertices())
+  for (const auto &e : this->dataPtr->Entities(this->world))
   {
-    const auto &v = item.second.get();
-    if (!_other.dataPtr->entities.VertexFromId(v.Id()).Valid())
+    if (!_other.HasEntity(e))
     {
       // In `this` but not in `other`, so insert the entity as a "removed"
       // entity.
-      diff.InsertRemovedEntity(v.Data());
+      diff.InsertRemovedEntity(e);
     }
   }
   return diff;
@@ -2308,11 +2323,7 @@ void FlecsComponentManager::ApplyEntityDiff(
   {
     if (!this->HasEntity(entity))
     {
-      this->dataPtr->CreateEntityImplementation(entity);
-      if (entity >= this->dataPtr->entityCount)
-      {
-        this->dataPtr->entityCount = entity;
-      }
+      this->dataPtr->CreateEntityImplementation(this->world, entity);
       copyComponents(entity);
       this->SetParentEntity(entity, _other.ParentEntity(entity));
     }
@@ -2324,19 +2335,12 @@ void FlecsComponentManager::ApplyEntityDiff(
     // removal.
     if (!this->HasEntity(entity))
     {
-      this->dataPtr->CreateEntityImplementation(entity);
+      this->dataPtr->CreateEntityImplementation(this->world, entity);
       // We want to set this entity as "removed", but
       // CreateEntityImplementation sets it as "newlyCreated",
       // so remove it from that list.
-      {
-        std::lock_guard<std::mutex> lock(this->dataPtr->entityCreatedMutex);
-        this->dataPtr->newlyCreatedEntities.erase(entity);
-      }
+      this->world.entity(entity + this->EntityOffset()).remove<NewEntity>();
       // Copy components so that EachRemoved match correctly
-      if (entity >= this->dataPtr->entityCount)
-      {
-        this->dataPtr->entityCount = entity;
-      }
       copyComponents(entity);
       this->SetParentEntity(entity, _other.ParentEntity(entity));
     }
@@ -2355,7 +2359,6 @@ void FlecsComponentManager::ResetTo(const FlecsComponentManager &_other)
   this->CopyFrom(tmpCopy);
 }
 
-*/
 /////////////////////////////////////////////////
 std::optional<Entity> FlecsComponentManager::EntityByName(
     const std::string &_name) const

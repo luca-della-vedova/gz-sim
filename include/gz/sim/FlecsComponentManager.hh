@@ -62,7 +62,7 @@ namespace gz
     inline namespace GZ_SIM_VERSION_NAMESPACE {
     // Forward declarations.
     class GZ_SIM_HIDDEN FlecsComponentManagerPrivate;
-    class FlecsComponentManagerDiff;
+    class EntityComponentManagerDiff;
 
     /** \class FlecsComponentManager FlecsComponentManager.hh \
      * gz/sim/FlecsComponentManager.hh
@@ -683,7 +683,6 @@ namespace gz
       /// \param[in] _offset Offset value.
       public: void SetEntityCreateOffset(uint64_t _offset);
 
-              /*
       /// \brief Given a diff, apply it to this ECM. Note that for removed
       /// entities, this would mark them for removal instead of actually
       /// removing the entities.
@@ -691,7 +690,6 @@ namespace gz
       /// was computed.
       public: void ResetTo(const FlecsComponentManager &_other);
 
-      */
       /// \brief Return true if there are components marked for removal.
       /// \return True if there are components marked for removal.
       public: bool HasRemovedComponents() const;
@@ -718,7 +716,6 @@ namespace gz
 
       /// \brief Mark all components as not changed.
       public: void SetAllComponentsUnchanged();
-              /*
 
       /// Compute the diff between this FlecsComponentManager and _other at the
       /// entity level. This does not compute the diff between components of an
@@ -728,7 +725,7 @@ namespace gz
       ///  * If an entity is in `this`, but not in `other`, insert the entity
       ///  as a "removed" entity.
       ///  \return Data structure containing the added and removed entities
-      protected: FlecsComponentManagerDiff ComputeEntityDiff(
+      protected: EntityComponentManagerDiff ComputeEntityDiff(
                      const FlecsComponentManager &_other) const;
 
       /// \brief Given an entity diff, apply it to this ECM. Note that for
@@ -737,8 +734,9 @@ namespace gz
       /// \param[in] _other Original FlecsComponentManager from which the diff
       /// was computed.
       protected: void ApplyEntityDiff(const FlecsComponentManager &_other,
-                                      const FlecsComponentManagerDiff &_diff);
+                                      const EntityComponentManagerDiff &_diff);
 
+              /*
       /// \brief Get whether an Entity exists and is new.
       ///
       /// Entities are considered new in the time between their creation and a
