@@ -73,7 +73,6 @@ set (sources
   Conversions.cc
   ComponentFactory.cc
   EntityComponentManager.cc
-  FlecsComponentManager.cc
   EntityComponentManagerDiff.cc
   InstallationDirectories.cc
   Joint.cc
@@ -112,7 +111,6 @@ set (gtest_sources
   Component_TEST.cc
   Conversions_TEST.cc
   EntityComponentManager_TEST.cc
-  FlecsComponentManager_TEST.cc
   EventManager_TEST.cc
   Joint_TEST.cc
   Light_TEST.cc

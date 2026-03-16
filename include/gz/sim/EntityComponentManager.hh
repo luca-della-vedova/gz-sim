@@ -14,11 +14,22 @@
  * limitations under the License.
  *
 */
-#ifndef GZ_SIM_ENTITYCOMPONENTMANAGER_HH_
-#define GZ_SIM_ENTITYCOMPONENTMANAGER_HH_
+#ifndef GZ_SIM_FLECSCOMPONENTMANAGER_HH_
+#define GZ_SIM_FLECSCOMPONENTMANAGER_HH_
 
 #include <gz/msgs/serialized.pb.h>
 #include <gz/msgs/serialized_map.pb.h>
+
+// TODO(luca) move to a detail folder?
+#ifdef emit
+  // Conflict because qt also defines emit
+  #pragma push_macro("emit")
+  #undef emit
+  #include <flecs.h>
+  #pragma pop_macro("emit")
+#else
+  #include <flecs.h>
+#endif
 
 #include <map>
 #include <memory>
@@ -46,16 +57,21 @@ namespace gz
   namespace sim
   {
     // Inline bracket to help doxygen filtering.
+
+    // Marker for entities that have been newly created
+    struct NewEntity { };
+    // Marker for entities that are marked for removal
+    struct RemoveEntity { };
+    // Marker for entities that had a component modified (i.e. added, removed, changed).
+    // This is used for state change detection and serialization.
+    // TODO(luca) consider using actual change detection for this.
+    struct ModifiedComponent { };
+    // Marker for entities that are pinned and cannot be removed
+    struct PinnedEntity { };
     inline namespace GZ_SIM_VERSION_NAMESPACE {
     // Forward declarations.
     class GZ_SIM_HIDDEN EntityComponentManagerPrivate;
     class EntityComponentManagerDiff;
-
-    /// \brief Type alias for the graph that holds entities.
-    /// Each vertex is an entity, and the direction points from the parent to
-    /// its children.
-    /// All edges are positive booleans.
-    using EntityGraph = math::graph::DirectedGraph<Entity, bool>;
 
     /** \class EntityComponentManager EntityComponentManager.hh \
      * gz/sim/EntityComponentManager.hh
@@ -222,6 +238,10 @@ namespace gz
       /// \return True if the entity and component existed and the component was
       ///  removed.
       public: bool RemoveComponent(
+                  const Entity _entity, const ComponentTypeId &_typeId);
+
+              // Postprocessing after removing a component
+      public: bool PostRemoveComponent(
                   const Entity _entity, const ComponentTypeId &_typeId);
 
       /// \brief Remove a component from an entity based on a type.
@@ -505,10 +525,9 @@ namespace gz
                   bool(const Entity &_entity,
                        const ComponentTypeTs *...)>>::type _f) const;
 
-      /// \brief Get a graph with all the entities. Entities are vertices and
-      /// edges point from parent to children.
-      /// \return Entity graph.
-      public: const EntityGraph &Entities() const;
+      /// \brief Get all the entities.
+      /// \return A vector of entities
+      public: std::vector<Entity> Entities() const;
 
       /// \brief Get all entities which are descendants of a given entity,
       /// including the entity itself.
@@ -759,6 +778,7 @@ namespace gz
       private: components::BaseComponent *ComponentImplementation(
                    const Entity _entity,
                    const ComponentTypeId _type);
+               /*
 
       /// \brief Find a View that matches the set of ComponentTypeIds. If
       /// a match is not found, then a new view is created.
@@ -786,6 +806,7 @@ namespace gz
                    const detail::ComponentTypeKey &_types,
                    std::unique_ptr<detail::BaseView> _view) const;
 
+      */
       /// \brief Add an entity and its components to a serialized state message.
       /// \param[out] _msg The state message.
       /// \param[in] _entity The entity to be added.
@@ -797,6 +818,15 @@ namespace gz
 
       /// \brief Private data pointer.
       private: std::unique_ptr<EntityComponentManagerPrivate> dataPtr;
+
+      // TODO(luca) can we put this in the dataPtr? Tough because a templated function needs to access it to operate on components
+      private: flecs::world world;
+
+      /// \brief Gets the entity offset to apply to entity functions
+      private: Entity EntityOffset() const;
+
+      /// \brief Marks the component as removed for changed state tracking
+      private: void MarkComponentAsRemoved(const Entity& _entity, const ComponentTypeId _id, bool _removed);
 
       /// \brief Add an entity and its components to a serialized state message.
       /// \param[out] _msg The state message.
@@ -812,6 +842,7 @@ namespace gz
           const std::unordered_set<ComponentTypeId> &_types = {},
           bool _full = false) const;
 
+      /*
       /// \brief Set whether views should be locked when entities are being
       /// added to them. This can be used to prevent race conditions in
       /// system PostUpdates, since these are run in parallel (entities are
@@ -828,6 +859,7 @@ namespace gz
       /// otherwise.
       private: bool LockAddingEntitiesToViews() const;
 
+      */
       // Make runners friends so that they can manage entity creation and
       // removal. This should be safe since runners are internal
       // to Gazebo.
@@ -849,3 +881,4 @@ namespace gz
 #include "gz/sim/detail/EntityComponentManager.hh"
 
 #endif
+

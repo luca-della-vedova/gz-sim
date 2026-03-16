@@ -28,8 +28,19 @@
 #include <utility>
 #include <vector>
 
+// TODO(luca) move to a detail folder?
+#ifdef emit
+  // Conflict because qt also defines emit
+  #pragma push_macro("emit")
+  #undef emit
+  #include <flecs.h>
+  #pragma pop_macro("emit")
+#else
+  #include <flecs.h>
+#endif
 #include <gz/math/Helpers.hh>
 
+#include "gz/sim/components/Factory.hh"
 #include "gz/sim/EntityComponentManager.hh"
 
 namespace gz
@@ -94,21 +105,13 @@ template<typename ComponentTypeT>
 ComponentTypeT *EntityComponentManager::CreateComponent(const Entity _entity,
             const ComponentTypeT &_data)
 {
-  auto updateData = this->CreateComponentImplementation(_entity,
-      ComponentTypeT::typeId, &_data);
-  auto comp = this->Component<ComponentTypeT>(_entity);
-  if (updateData)
-  {
-    if (!comp)
-    {
-      gzerr << "Internal error. Failure to create a component of type "
-        << ComponentTypeT::typeId << " for entity " << _entity
-        << ". This should never happen!\n";
-      return comp;
-    }
-    *comp = _data;
-  }
-  return comp;
+  if (!this->HasEntity(_entity))
+    return nullptr;
+  flecs::entity e = this->world.entity(_entity + this->EntityOffset());
+  e.set<ComponentTypeT>(_data);
+  this->SetChanged(_entity, ComponentTypeT::typeId, ComponentState::OneTimeChange);
+  this->MarkComponentAsRemoved(_entity, ComponentTypeT::typeId, false);
+  return e.try_get_mut<ComponentTypeT>();
 }
 
 //////////////////////////////////////////////////
@@ -116,22 +119,20 @@ template<typename ComponentTypeT>
 const ComponentTypeT *EntityComponentManager::Component(
     const Entity _entity) const
 {
-  // Get a unique identifier to the component type
-  const ComponentTypeId typeId = ComponentTypeT::typeId;
-
-  return static_cast<const ComponentTypeT *>(
-      this->ComponentImplementation(_entity, typeId));
+  if (!this->HasEntity(_entity))
+    return nullptr;
+  flecs::entity e = this->world.entity(_entity + this->EntityOffset());
+  return e.try_get<ComponentTypeT>();
 }
 
 //////////////////////////////////////////////////
 template<typename ComponentTypeT>
 ComponentTypeT *EntityComponentManager::Component(const Entity _entity)
 {
-  // Get a unique identifier to the component type
-  const ComponentTypeId typeId = ComponentTypeT::typeId;
-
-  return static_cast<ComponentTypeT *>(
-      this->ComponentImplementation(_entity, typeId));
+  if (!this->HasEntity(_entity))
+    return nullptr;
+  flecs::entity e = this->world.entity(_entity + this->EntityOffset());
+  return e.try_get_mut<ComponentTypeT>();
 }
 
 //////////////////////////////////////////////////
@@ -181,36 +182,38 @@ template<typename ...ComponentTypeTs>
 Entity EntityComponentManager::EntityByComponents(
     const ComponentTypeTs &..._desiredComponents) const
 {
-  // Get all entities which have components of the desired types
-  const auto &view = this->FindView<ComponentTypeTs...>();
-
-  // Iterate over entities
   Entity result{kNullEntity};
-  for (const Entity entity : view->Entities())
-  {
-    bool different{false};
+  flecs::query<const ComponentTypeTs...> q = this->world.query<const ComponentTypeTs...>();
+  q.run([&](flecs::iter& _it) {
+    while (_it.next()) {
+      for (auto i : _it) {
+        flecs::entity entity = _it.entity(i);
+        Entity gzEntity = entity.id() - this->EntityOffset();
+        bool different{false};
 
-    // Iterate over desired components, comparing each of them to the
-    // equivalent component in the entity.
-    ForEach([&](const auto &_desiredComponent)
-    {
-      auto entityComponent = this->Component<
-          std::remove_cv_t<std::remove_reference_t<
-              decltype(_desiredComponent)>>>(entity);
+        // Iterate over desired components, comparing each of them to the
+        // equivalent component in the entity.
+        ForEach([&](const auto &_desiredComponent)
+        {
+          // TODO(luca) Use the component from the query here rather than calling Component again
+          auto entityComponent = this->Component<
+              std::remove_cv_t<std::remove_reference_t<
+                  decltype(_desiredComponent)>>>(gzEntity);
 
-      if (*entityComponent != _desiredComponent)
-      {
-        different = true;
+          if (*entityComponent != _desiredComponent)
+          {
+            different = true;
+          }
+        }, _desiredComponents...);
+
+        if (!different)
+        {
+          result = gzEntity;
+          break;
+        }
       }
-    }, _desiredComponents...);
-
-    if (!different)
-    {
-      result = entity;
-      break;
     }
-  }
-
+  });
   return result;
 }
 
@@ -219,35 +222,37 @@ template<typename ...ComponentTypeTs>
 std::vector<Entity> EntityComponentManager::EntitiesByComponents(
     const ComponentTypeTs &..._desiredComponents) const
 {
-  // Get all entities which have components of the desired types
-  const auto &view = this->FindView<ComponentTypeTs...>();
-
-  // Iterate over entities
   std::vector<Entity> result;
-  for (const Entity entity : view->Entities())
-  {
-    bool different{false};
+  flecs::query<const ComponentTypeTs...> q = this->world.query<const ComponentTypeTs...>();
+  q.run([&](flecs::iter& _it) {
+    while (_it.next()) {
+      for (auto i : _it) {
+        flecs::entity entity = _it.entity(i);
+        Entity gzEntity = entity.id() - this->EntityOffset();
+        bool different{false};
 
-    // Iterate over desired components, comparing each of them to the
-    // equivalent component in the entity.
-    ForEach([&](const auto &_desiredComponent)
-    {
-      auto entityComponent = this->Component<
-          std::remove_cv_t<std::remove_reference_t<
-              decltype(_desiredComponent)>>>(entity);
+        // Iterate over desired components, comparing each of them to the
+        // equivalent component in the entity.
+        ForEach([&](const auto &_desiredComponent)
+        {
+          // TODO(luca) Use the component from the query here rather than calling Component again
+          auto entityComponent = this->Component<
+              std::remove_cv_t<std::remove_reference_t<
+                  decltype(_desiredComponent)>>>(gzEntity);
 
-      if (*entityComponent != _desiredComponent)
-      {
-        different = true;
+          if (*entityComponent != _desiredComponent)
+          {
+            different = true;
+          }
+        }, _desiredComponents...);
+
+        if (!different)
+        {
+          result.push_back(gzEntity);
+        }
       }
-    }, _desiredComponents...);
-
-    if (!different)
-    {
-      result.push_back(entity);
     }
-  }
-
+  });
   return result;
 }
 
@@ -256,42 +261,37 @@ template<typename ...ComponentTypeTs>
 std::vector<Entity> EntityComponentManager::ChildrenByComponents(Entity _parent,
      const ComponentTypeTs &..._desiredComponents) const
 {
-  // Get all entities which have components of the desired types
-  const auto &view = this->FindView<ComponentTypeTs...>();
-
-  // Get all entities which are immediate children of the given parent
-  auto children = this->Entities().AdjacentsFrom(_parent);
-
-  // Iterate over entities
   std::vector<Entity> result;
-  for (const Entity entity : view->Entities())
-  {
-    if (children.find(entity) == children.end())
-    {
-      continue;
-    }
+  flecs::query<const ComponentTypeTs...> q = this->world.query_builder<const ComponentTypeTs...>().with(flecs::ChildOf, _parent + this->EntityOffset()).build();
+  q.run([&](flecs::iter& _it) {
+    while (_it.next()) {
+      for (auto i : _it) {
+        flecs::entity entity = _it.entity(i);
+        Entity gzEntity = entity.id() - this->EntityOffset();
+        bool different{false};
 
-    // Iterate over desired components, comparing each of them to the
-    // equivalent component in the entity.
-    bool different{false};
-    ForEach([&](const auto &_desiredComponent)
-    {
-      auto entityComponent = this->Component<
-          std::remove_cv_t<std::remove_reference_t<
-              decltype(_desiredComponent)>>>(entity);
+        // Iterate over desired components, comparing each of them to the
+        // equivalent component in the entity.
+        ForEach([&](const auto &_desiredComponent)
+        {
+          // TODO(luca) Use the component from the query here rather than calling Component again
+          auto entityComponent = this->Component<
+              std::remove_cv_t<std::remove_reference_t<
+                  decltype(_desiredComponent)>>>(gzEntity);
 
-      if (*entityComponent != _desiredComponent)
-      {
-        different = true;
+          if (*entityComponent != _desiredComponent)
+          {
+            different = true;
+          }
+        }, _desiredComponents...);
+
+        if (!different)
+        {
+          result.push_back(gzEntity);
+        }
       }
-    }, _desiredComponents...);
-
-    if (!different)
-    {
-      result.push_back(entity);
     }
-  }
-
+  });
   return result;
 }
 
@@ -307,20 +307,8 @@ template<typename ...ComponentTypeTs>
 void EntityComponentManager::EachNoCache(typename identity<std::function<
     bool(const Entity &_entity, const ComponentTypeTs *...)>>::type _f) const
 {
-  for (const auto &vertex : this->Entities().Vertices())
-  {
-    Entity entity = vertex.first;
-    auto types = std::set<ComponentTypeId>{ComponentTypeTs::typeId...};
-
-    if (this->EntityMatches(entity, types))
-    {
-      if (!_f(entity,
-              this->Component<ComponentTypeTs>(entity)...))
-      {
-        break;
-      }
-    }
-  }
+  // For now Each itself isn't cached, change this when it is
+  this->Each<ComponentTypeTs...>(_f);
 }
 
 //////////////////////////////////////////////////
@@ -328,64 +316,34 @@ template<typename ...ComponentTypeTs>
 void EntityComponentManager::EachNoCache(typename identity<std::function<
     bool(const Entity &_entity, ComponentTypeTs *...)>>::type _f)
 {
-  for (const auto &vertex : this->Entities().Vertices())
-  {
-    Entity entity = vertex.first;
-    auto types = std::set<ComponentTypeId>{ComponentTypeTs::typeId...};
-
-    if (this->EntityMatches(entity, types))
-    {
-      if (!_f(entity,
-              this->Component<ComponentTypeTs>(entity)...))
-      {
-        break;
-      }
-    }
-  }
+  // For now Each itself isn't cached, change this when it is
+  this->Each<ComponentTypeTs...>(_f);
 }
 
 namespace detail
 {
 /// \brief Helper template to call a callback function with each of the
-/// components in the _data vector expanded as arguments to the callback
+/// components in the flecs iterator expanded as arguments to the callback
 /// function.
 /// \tparam ComponentTypeTs The actual types of each of the components.
 /// \tparam FuncT The type of the callback function.
-/// \tparam BaseComponentT Either "BaseComponent" or "const BaseComponent"
-/// \tparam Is Index sequence that will be used to iterate through the vector
-/// _data.
+/// \tparam Is Index sequence that will be used to iterate through the flecs
+/// iterator fields.
 /// \param[in] _f The callback function
 /// \param[in] _entity The entity associated with the components.
-/// \param[in] _data A vector of component pointers that will be expanded to
-/// become the arguments of the callback function _f.
-/// \return The value of return by the function _f.
-template <typename... ComponentTypeTs, typename FuncT, typename BaseComponentT,
-          std::size_t... Is>
-constexpr bool applyFunctionImpl(const FuncT &_f, const Entity &_entity,
-                       const std::vector<BaseComponentT *> &_data,
-                       std::index_sequence<Is...>)
+/// \param[in] _it The flecs iterator.
+/// \param[in] _row The row index in the iterator.
+/// \return The value returned by the function _f.
+template <typename... ComponentTypeTs, typename FuncT, std::size_t... Is>
+bool applyEach(const FuncT &_f, const Entity &_entity, flecs::iter &_it,
+               std::size_t _row, std::index_sequence<Is...>, std::size_t offset = 0)
 {
-  return _f(_entity, static_cast<ComponentTypeTs *>(_data[Is])...);
+  // Silence warnings of unused _row for empty queries
+  (void)_row;
+  return _f(_entity,
+            static_cast<ComponentTypeTs *>(_it.field_at(Is + offset, _row))...);
 }
 
-/// \brief Helper template to call a callback function with each of the
-/// components in the _data vector expanded as arguments to the callback
-/// function.
-/// \tparam ComponentTypeTs The actual types of each of the components.
-/// \tparam FuncT The type of the callback function.
-/// \tparam BaseComponentT Either "BaseComponent" or "const BaseComponent"
-/// \param[in] _f The callback function
-/// \param[in] _entity The entity associated with the components.
-/// \param[in] _data A vector of component pointers that will be expanded to
-/// become the arguments of the callback function _f.
-/// \return The value of return by the function _f.
-template <typename... ComponentTypeTs, typename FuncT, typename BaseComponentT>
-constexpr bool applyFunction(const FuncT &_f, const Entity &_entity,
-                   const std::vector<BaseComponentT *> &_data)
-{
-  return applyFunctionImpl<ComponentTypeTs...>(
-      _f, _entity, _data, std::index_sequence_for<ComponentTypeTs...>{});
-}
 }  // namespace detail
 
 //////////////////////////////////////////////////
@@ -393,20 +351,20 @@ template<typename ...ComponentTypeTs>
 void EntityComponentManager::Each(typename identity<std::function<
     bool(const Entity &_entity, const ComponentTypeTs *...)>>::type _f) const
 {
-  // Get the view. This will create a new view if one does not already
-  // exist.
-  auto view = this->FindView<ComponentTypeTs...>();
-
-  // Iterate over the entities in the view, and invoke the callback
-  // function.
-  for (const Entity entity : view->Entities())
-  {
-    const auto &data = view->EntityComponentData(entity);
-    if (!detail::applyFunction<const ComponentTypeTs...>(_f, entity, data))
-    {
-      break;
+  flecs::query<const ComponentTypeTs...> q = this->world.query<const ComponentTypeTs...>();
+  q.run([&](flecs::iter& _it) {
+    while (_it.next()) {
+      for (auto i : _it) {
+        flecs::entity entity = _it.entity(i);
+        Entity gzEntity = entity.id() - this->EntityOffset();
+        if (!detail::applyEach<const ComponentTypeTs...>(
+              _f, gzEntity, _it, i, std::index_sequence_for<ComponentTypeTs...>{}))
+        {
+          return;
+        }
+      }
     }
-  }
+  });
 }
 
 //////////////////////////////////////////////////
@@ -414,20 +372,20 @@ template<typename ...ComponentTypeTs>
 void EntityComponentManager::Each(typename identity<std::function<
     bool(const Entity &_entity, ComponentTypeTs *...)>>::type _f)
 {
-  // Get the view. This will create a new view if one does not already
-  // exist.
-  auto view = this->FindView<ComponentTypeTs...>();
-
-  // Iterate over the entities in the view, and invoke the callback
-  // function.
-  for (const Entity entity : view->Entities())
-  {
-    const auto &data = view->EntityComponentData(entity);
-    if (!detail::applyFunction<ComponentTypeTs...>(_f, entity, data))
-    {
-      break;
+  flecs::query<ComponentTypeTs...> q = this->world.query<ComponentTypeTs...>();
+  q.run([&](flecs::iter& _it) {
+    while (_it.next()) {
+      for (auto i : _it) {
+        flecs::entity entity = _it.entity(i);
+        Entity gzEntity = entity.id() - this->EntityOffset();
+        if (!detail::applyEach<ComponentTypeTs...>(
+              _f, gzEntity, _it, i, std::index_sequence_for<ComponentTypeTs...>{}))
+        {
+          return;
+        }
+      }
     }
-  }
+  });
 }
 
 //////////////////////////////////////////////////
@@ -443,21 +401,20 @@ template <typename... ComponentTypeTs>
 void EntityComponentManager::EachNew(typename identity<std::function<
     bool(const Entity &_entity, ComponentTypeTs *...)>>::type _f)
 {
-  // Get the view. This will create a new view if one does not already
-  // exist.
-  auto view = this->FindView<ComponentTypeTs...>();
-
-  // Iterate over the entities in the view and in the newly created
-  // entities list, and invoke the callback
-  // function.
-  for (const Entity entity : view->NewEntities())
-  {
-    const auto &data = view->EntityComponentData(entity);
-    if (!detail::applyFunction<ComponentTypeTs...>(_f, entity, data))
-    {
-      break;
+  flecs::query<NewEntity, ComponentTypeTs...> q = this->world.query<NewEntity, ComponentTypeTs...>();
+  q.run([&](flecs::iter& _it) {
+    while (_it.next()) {
+      for (auto i : _it) {
+        flecs::entity entity = _it.entity(i);
+        Entity gzEntity = entity.id() - this->EntityOffset();
+        if (!detail::applyEach<ComponentTypeTs...>(
+              _f, gzEntity, _it, i, std::index_sequence_for<ComponentTypeTs...>{}, 1))
+        {
+          return;
+        }
+      }
     }
-  }
+  });
 }
 
 //////////////////////////////////////////////////
@@ -465,21 +422,20 @@ template <typename... ComponentTypeTs>
 void EntityComponentManager::EachNew(typename identity<std::function<
     bool(const Entity &_entity, const ComponentTypeTs *...)>>::type _f) const
 {
-  // Get the view. This will create a new view if one does not already
-  // exist.
-  auto view = this->FindView<ComponentTypeTs...>();
-
-  // Iterate over the entities in the view and in the newly created
-  // entities list, and invoke the callback
-  // function.
-  for (const Entity entity : view->NewEntities())
-  {
-    const auto &data = view->EntityComponentData(entity);
-    if (!detail::applyFunction<const ComponentTypeTs...>(_f, entity, data))
-    {
-      break;
+  flecs::query<NewEntity, const ComponentTypeTs...> q = this->world.query<NewEntity, const ComponentTypeTs...>();
+  q.run([&](flecs::iter& _it) {
+    while (_it.next()) {
+      for (auto i : _it) {
+        flecs::entity entity = _it.entity(i);
+        Entity gzEntity = entity.id() - this->EntityOffset();
+        if (!detail::applyEach<const ComponentTypeTs...>(
+              _f, gzEntity, _it, i, std::index_sequence_for<ComponentTypeTs...>{}, 1))
+        {
+          return;
+        }
+      }
     }
-  }
+  });
 }
 
 //////////////////////////////////////////////////
@@ -487,23 +443,23 @@ template<typename ...ComponentTypeTs>
 void EntityComponentManager::EachRemoved(typename identity<std::function<
     bool(const Entity &_entity, const ComponentTypeTs *...)>>::type _f) const
 {
-  // Get the view. This will create a new view if one does not already
-  // exist.
-  auto view = this->FindView<ComponentTypeTs...>();
-
-  // Iterate over the entities in the view and in the newly created
-  // entities list, and invoke the callback
-  // function.
-  for (const Entity entity : view->ToRemoveEntities())
-  {
-    const auto &data = view->EntityComponentData(entity);
-    if (!detail::applyFunction<const ComponentTypeTs...>(_f, entity, data))
-    {
-      break;
+  flecs::query<RemoveEntity, const ComponentTypeTs...> q = this->world.query<RemoveEntity, const ComponentTypeTs...>();
+  q.run([&](flecs::iter& _it) {
+    while (_it.next()) {
+      for (auto i : _it) {
+        flecs::entity entity = _it.entity(i);
+        Entity gzEntity = entity.id() - this->EntityOffset();
+        if (!detail::applyEach<const ComponentTypeTs...>(
+              _f, gzEntity, _it, i, std::index_sequence_for<ComponentTypeTs...>{}, 1))
+        {
+          return;
+        }
+      }
     }
-  }
+  });
 }
 
+/*
 //////////////////////////////////////////////////
 template<typename ...ComponentTypeTs>
 detail::View *EntityComponentManager::FindView() const
@@ -572,15 +528,23 @@ detail::View *EntityComponentManager::FindView() const
   return static_cast<detail::View *>(baseViewPtr);
 }
 
+*/
 //////////////////////////////////////////////////
 template<typename ComponentTypeT>
 bool EntityComponentManager::RemoveComponent(Entity _entity)
 {
-  const auto typeId = ComponentTypeT::typeId;
-  return this->RemoveComponent(_entity, typeId);
+  if (!this->HasEntity(_entity))
+    return false;
+  flecs::entity e = this->world.entity(_entity + this->EntityOffset());
+  if (!e.has<ComponentTypeT>())
+    return false;
+  e.remove<ComponentTypeT>();
+  this->PostRemoveComponent(_entity, ComponentTypeT::typeId);
+  return true;
 }
 }
 }
 }
 
 #endif
+
