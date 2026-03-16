@@ -339,7 +339,7 @@ EntityComponentManager::EntityComponentManager()
   this->world.component<SimEntity>();
   this->world.component<NewEntity>();
   this->world.component<RemoveEntity>();
-  this->world.component<ModifiedComponent>();
+  this->world.component<ModifiedComponent>().add(flecs::CanToggle);
   this->world.component<PinnedEntity>();
   // Hook for ParentEntity removal.
   this->world.observer<components::ParentEntity>()
@@ -386,7 +386,7 @@ size_t EntityComponentManager::EntityCount() const
 /////////////////////////////////////////////////
 Entity EntityComponentManager::CreateEntity()
 {
-  auto e = this->world.entity().add<SimEntity>().add<NewEntity>().id();
+  auto e = this->world.entity().add<SimEntity>().add<NewEntity>().add<ModifiedComponent>().disable<ModifiedComponent>().id();
   if (e > this->dataPtr->highestAllocatedEntity)
     this->dataPtr->highestAllocatedEntity = e;
   return e - this->dataPtr->entityOffset;
@@ -401,7 +401,7 @@ Entity EntityComponentManagerPrivate::CreateEntityImplementation(flecs::world& w
   auto e = world.entity(desc.id);
   if (e.id() > this->highestAllocatedEntity)
     this->highestAllocatedEntity = e.id();
-  return e.add<SimEntity>().add<NewEntity>().id() - this->entityOffset;
+  return e.add<SimEntity>().add<NewEntity>().add<ModifiedComponent>().disable<ModifiedComponent>().id() - this->entityOffset;
 }
 
 /////////////////////////////////////////////////
@@ -769,7 +769,6 @@ void EntityComponentManager::RequestRemoveEntities()
   std::lock_guard<std::mutex> lock(this->dataPtr->entityRemoveMutex);
   this->world.defer_begin();
   this->world.query_builder<SimEntity>().without<PinnedEntity>().each([](flecs::entity e, const SimEntity&) {
-    // TODO(luca) check pinning, skip if so
     e.add<RemoveEntity>();
   });
   this->world.defer_end();
@@ -1584,8 +1583,8 @@ msgs::SerializedState EntityComponentManager::ChangedState() const
     this->AddEntityToMessage(stateMsg, e);
     return true;
   });
-  this->world.each<const ModifiedComponent>([this, &stateMsg](flecs::entity e, const ModifiedComponent&) {
-      this->AddEntityToMessage(stateMsg, e);
+  this->world.query_builder<const ModifiedComponent>().without<NewEntity>().without<RemoveEntity>().build().each([this, &stateMsg](flecs::entity e, const ModifiedComponent&) {
+      this->AddEntityToMessage(stateMsg, e.id() - this->EntityOffset());
   });
   return stateMsg;
 }
@@ -1602,8 +1601,8 @@ void EntityComponentManager::ChangedState(
     this->AddEntityToMessage(_state, e);
     return true;
   });
-  this->world.each<const ModifiedComponent>([this, &_state](flecs::entity e, const ModifiedComponent&) {
-      this->AddEntityToMessage(_state, e);
+  this->world.query_builder<const ModifiedComponent>().without<NewEntity>().without<RemoveEntity>().build().each([this, &_state](flecs::entity e, const ModifiedComponent&) {
+      this->AddEntityToMessage(_state, e.id() - this->EntityOffset());
   });
 }
 /*
@@ -2000,7 +1999,11 @@ void EntityComponentManager::SetAllComponentsUnchanged()
 {
   this->dataPtr->periodicChangedComponents.clear();
   this->dataPtr->oneTimeChangedComponents.clear();
-  this->world.remove_all<ModifiedComponent>();
+  this->world.defer_begin();
+  this->world.each<ModifiedComponent>([](flecs::entity e, const ModifiedComponent&) {
+    e.disable<ModifiedComponent>();
+  });
+  this->world.defer_end();
 }
 
 /////////////////////////////////////////////////
@@ -2110,7 +2113,7 @@ void EntityComponentManagerPrivate::AddModifiedComponent(flecs::entity _entity)
     return;
   }
 
-  _entity.add<ModifiedComponent>();
+  _entity.enable<ModifiedComponent>();
 }
 
 /////////////////////////////////////////////////
@@ -2243,9 +2246,10 @@ void EntityComponentManager::CopyFrom(const EntityComponentManager &_fromEcm)
   _fromEcm.world.each<SimEntity>([&](flecs::entity e, const SimEntity&) {
     flecs::entity destEntity = this->world.entity(this->dataPtr->CreateEntityImplementation(this->world, e.id() - _fromEcm.EntityOffset()) + this->EntityOffset());
     destEntity.add<SimEntity>();
+    destEntity.add<ModifiedComponent>();
     if (e.has<NewEntity>()) destEntity.add<NewEntity>();
     if (e.has<RemoveEntity>()) destEntity.add<RemoveEntity>();
-    if (e.has<ModifiedComponent>()) destEntity.add<ModifiedComponent>();
+    if (!e.enabled<ModifiedComponent>()) destEntity.disable<ModifiedComponent>();
     if (e.has<PinnedEntity>()) destEntity.add<PinnedEntity>();
 
     e.each([&](flecs::id compId) {
