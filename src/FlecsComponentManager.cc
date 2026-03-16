@@ -2355,18 +2355,19 @@ void FlecsComponentManager::ResetTo(const FlecsComponentManager &_other)
   this->CopyFrom(tmpCopy);
 }
 
+*/
 /////////////////////////////////////////////////
 std::optional<Entity> FlecsComponentManager::EntityByName(
     const std::string &_name) const
 {
   std::optional<Entity> entity;
+  // TODO(luca) use the name stored in Flecs instead, or perhaps tik/tok duplicate
    Entity entByName = EntityByComponents(components::Name(_name));
   if (entByName != kNullEntity)
     entity = entByName;
 
   return entity;
 }
-*/
 
 /////////////////////////////////////////////////
 Entity FlecsComponentManager::EntityOffset() const

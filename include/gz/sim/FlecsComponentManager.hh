@@ -79,7 +79,6 @@ namespace gz
       /// \brief Destructor
       public: ~FlecsComponentManager();
 
-      /*
       /// \brief Copies the contents of `_from` into this object.
       /// \note This is a member function instead of a copy constructor so that
       /// it can have additional parameters if the need arises in the future.
@@ -88,7 +87,6 @@ namespace gz
       /// \param[in] _from Object to copy from
       public: void CopyFrom(const FlecsComponentManager &_fromEcm);
 
-      */
       /// \brief Creates a new Entity.
       /// \return An id for the Entity, or kNullEntity on failure.
       public: Entity CreateEntity();
@@ -697,7 +695,6 @@ namespace gz
       /// \brief Return true if there are components marked for removal.
       /// \return True if there are components marked for removal.
       public: bool HasRemovedComponents() const;
-      /*
 
       /// \brief Get an Entity based on a name component that is associated
       /// with the entity.
@@ -707,7 +704,6 @@ namespace gz
       public: std::optional<Entity> EntityByName(
                   const std::string &_name) const;
 
-              */
       /// \brief Clear the list of newly added entities so that a call to
       /// EachAdded after this will have no entities to iterate.
       public: void ClearNewlyCreatedEntities();

@@ -3201,7 +3201,6 @@ TEST_P(FlecsComponentManagerFixture,
   EXPECT_EQ(1, foundEntities);
 }
 
-/*
 //////////////////////////////////////////////////
 TEST_P(FlecsComponentManagerFixture, CopyEcm)
 {
@@ -3224,6 +3223,7 @@ TEST_P(FlecsComponentManagerFixture, CopyEcm)
       });
 }
 
+/*
 //////////////////////////////////////////////////
 TEST_P(FlecsComponentManagerFixture, ComputeDiff)
 {
@@ -3367,6 +3367,7 @@ TEST_P(FlecsComponentManagerFixture, ResetToWithAddedEntity)
   }
 }
 
+*/
 //////////////////////////////////////////////////
 TEST_P(FlecsComponentManagerFixture,
     GZ_UTILS_TEST_ENABLED_ONLY_ON_LINUX(AddRemoveAddComponentsStateMap))
@@ -3377,6 +3378,8 @@ TEST_P(FlecsComponentManagerFixture,
 
   // add a component
   auto comp = manager.CreateComponent<IntComponent>(e1, IntComponent(123));
+  // CHANGED Flecs has no pointer stability
+  auto typeId = comp->TypeId();
   ASSERT_NE(nullptr, comp);
   EXPECT_EQ(1, eachCount<IntComponent>(manager));
   EXPECT_EQ(123, comp->Data());
@@ -3398,7 +3401,7 @@ TEST_P(FlecsComponentManagerFixture,
   ASSERT_TRUE(iter != stateMsg.mutable_entities()->end());
   msgs::SerializedEntityMap &e1Msg = iter->second;
 
-  auto compIter = e1Msg.mutable_components()->find(comp->TypeId());
+  auto compIter = e1Msg.mutable_components()->find(typeId);
   ASSERT_TRUE(compIter != e1Msg.mutable_components()->end());
   msgs::SerializedComponent &e1c1Msg = compIter->second;
   e1c1Msg.set_component(std::to_string(321));
@@ -3471,7 +3474,6 @@ TEST_P(FlecsComponentManagerFixture, EntityByName)
   CompareEntityComponents<components::Name>(manager, entity,
     *entityByName, true);
 }
-*/
 
 // Run multiple times. We want to make sure that static globals don't cause
 // problems.
