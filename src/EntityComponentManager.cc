@@ -347,14 +347,15 @@ EntityComponentManager::EntityComponentManager()
   this->world.component<ModifiedComponent>().add(flecs::CanToggle);
   this->world.component<PinnedEntity>();
   // Hook for ParentEntity removal.
-  this->world.observer<components::ParentEntity>()
-    // TODO(luca) OnSet
-    .event(flecs::OnRemove)
-    .each([this](flecs::iter& it, std::size_t i, components::ParentEntity&) {
-      const auto currentParent = it.entity(i).parent();
-      if (currentParent && currentParent.is_alive()) {
-        it.entity(i).remove(flecs::ChildOf, currentParent);
-      }
+  // TODO(luca) this will not work if users directly mutate ParentEntity
+  // but then again that also wouldn't work with Gazebo (we need them
+  // to use a specific API to set the parent entity).
+  this->world.component<components::ParentEntity>()
+    .on_remove([](flecs::entity e, components::ParentEntity&) {
+      e.remove(flecs::ChildOf, flecs::Wildcard);
+    })
+    .on_set([this](flecs::entity e, components::ParentEntity& parent) {
+      e.child_of(parent.Data() + this->EntityOffset());
     });
   // TODO(luca) consider making ParentEntity a relationship? But might be tricky
   // because of how flecs encodes relationships in the entity value itself
@@ -765,7 +766,6 @@ void EntityComponentManager::RequestRemoveEntity(Entity _entity,
     }
     this->world.entity(e + this->EntityOffset()).add<RemoveEntity>();
   }
-  // TODO(luca) We need to add a without<RemoveEntity> in Each calls to make sure the component is not found
 }
 
 /////////////////////////////////////////////////
@@ -831,6 +831,7 @@ void EntityComponentManager::ProcessRemoveEntityRequests()
     e.clear();
     e.disable();
     this->dataPtr->componentsMarkedAsRemoved.erase(e.id() - this->EntityOffset());
+    // Remove relationships? But should be handled by  queries?
   });
   this->world.defer_end();
 }
@@ -1004,7 +1005,6 @@ void EntityComponentManager::UpdatePeriodicChangeCache(
       entities.begin(), entities.end());
   }
 
-  // TODO(luca) figure out componentsMarkedAsRemoved
   // Get all removed components
   for (const auto &[entity, components] :
     this->dataPtr->componentsMarkedAsRemoved)
@@ -1039,10 +1039,10 @@ bool EntityComponentManager::HasEntity(const Entity _entity) const
 /////////////////////////////////////////////////
 Entity EntityComponentManager::ParentEntity(const Entity _entity) const
 {
-  const auto parent = this->world.entity(_entity + this->EntityOffset()).parent().id();
-  if (parent == kNullEntity)
-    return parent;
-  return parent - this->EntityOffset();
+  const auto parent = this->world.entity(_entity + this->EntityOffset()).parent();
+  if (!parent || !parent.is_alive() || !parent.enabled())
+    return kNullEntity;
+  return parent.id() - this->EntityOffset();
 }
 
 /////////////////////////////////////////////////
@@ -1066,7 +1066,7 @@ bool EntityComponentManager::SetParentEntity(const Entity _child,
     return false;
   }
 
-  this->world.entity(_child + this->EntityOffset()).child_of(_parent + this->EntityOffset());
+  // this->world.entity(_child + this->EntityOffset()).child_of(_parent + this->EntityOffset());
   this->CreateComponent(_child, components::ParentEntity(_parent));
   return true;
 }
@@ -1174,7 +1174,7 @@ bool EntityComponentManager::EntityMatches(Entity _entity,
   const auto e = this->world.entity(_entity + this->EntityOffset());
   // quick check: the entity cannot match _types if _types is larger than the
   // number of component types the entity has
-  if (_types.size() > e.type().count())
+  if (_types.size() > static_cast<size_t>(e.type().count()))
     return false;
 
   // \todo(nkoenig) The performance of this could be improved.
@@ -2258,7 +2258,6 @@ void EntityComponentManager::CopyFrom(const EntityComponentManager &_fromEcm)
     if (e.has<PinnedEntity>()) destEntity.add<PinnedEntity>();
 
     e.each([&](flecs::id compId) {
-      // This ignores relationships, TODO(luca) register a OnSet hook for ParentEntity that registers ChildOf to fix relationship cloning
       if (!compId.is_entity()) {
         return;
       }

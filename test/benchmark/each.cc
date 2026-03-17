@@ -213,6 +213,39 @@ BENCHMARK_DEFINE_F(ManyComponentFixture, Each5ComponentCache)
   }
 }
 
+BENCHMARK_DEFINE_F(ManyComponentFixture, Each1ComponentGet4More)
+(benchmark::State &_st)
+{
+  for (auto _ : _st)
+  {
+    auto entityCount = _st.range(0);
+
+    for (int eachIter = 0; eachIter < kEachIterations; eachIter++)
+    {
+      int entitiesMatched = 0;
+
+      mgr->Each<components::Name>(
+          [&](const Entity &e,
+              const components::Name *)->bool
+          {
+            if (mgr->Component<AngularVelocity>(e) != nullptr &&
+                mgr->Component<Inertial>(e) != nullptr &&
+                mgr->Component<LinearAcceleration>(e) != nullptr &&
+                mgr->Component<LinearVelocity>(e) != nullptr) {
+              entitiesMatched++;
+            }
+
+            return true;
+          });
+
+      if (entitiesMatched != entityCount)
+      {
+        _st.SkipWithError("Failed to match correct number of entities");
+      }
+    }
+  }
+}
+
 BENCHMARK_DEFINE_F(ManyComponentFixture, Each10ComponentCache)
 (benchmark::State &_st)
 {
@@ -319,51 +352,6 @@ BENCHMARK_DEFINE_F(ManyComponentFixture, Each5ComponentNoCache)
   }
 }
 
-BENCHMARK_DEFINE_F(ManyComponentFixture, Each10ComponentNoCache)
-(benchmark::State &_st)
-{
-  for (auto _ : _st)
-  {
-    auto entityCount = _st.range(0);
-
-    for (int eachIter = 0; eachIter < kEachIterations; eachIter++)
-    {
-      int entitiesMatched = 0;
-
-      mgr->EachNoCache<components::Name,
-                AngularVelocity,
-                WorldAngularVelocity,
-                Inertial,
-                LinearAcceleration,
-                WorldLinearAcceleration,
-                LinearVelocity,
-                WorldLinearVelocity,
-                Pose,
-                WorldPose>(
-          [&](const Entity &,
-              const components::Name *,
-              const AngularVelocity *,
-              const WorldAngularVelocity *,
-              const Inertial *,
-              const LinearAcceleration *,
-              const WorldLinearAcceleration *,
-              const LinearVelocity *,
-              const WorldLinearVelocity *,
-              const Pose *,
-              const WorldPose *)->bool
-          {
-            entitiesMatched++;
-            return true;
-          });
-
-      if (entitiesMatched != entityCount)
-      {
-        _st.SkipWithError("Failed to match correct number of entities");
-      }
-    }
-  }
-}
-
 /// Method to generate test argument combinations.  google/benchmark does
 /// powers of 2 by default, which looks kind of ugly.
 static void EachTestArgs(Benchmark *_b)
@@ -383,48 +371,25 @@ static void EachTestArgs(Benchmark *_b)
   }
 }
 
-BENCHMARK_REGISTER_F(EntityComponentManagerFixture, EachNoCache)
-  ->Unit(benchmark::kMillisecond)
-  ->Apply(EachTestArgs);
-
-BENCHMARK_REGISTER_F(EntityComponentManagerFixture, EachCache)
-  ->Unit(benchmark::kMillisecond)
-  ->Apply(EachTestArgs);
-
-BENCHMARK_REGISTER_F(ManyComponentFixture, Each1ComponentNoCache)
-  ->Arg(10)
-  ->Arg(100)
-  ->Arg(1000)
-  ->Unit(benchmark::kMillisecond);
-
-BENCHMARK_REGISTER_F(ManyComponentFixture, Each1ComponentCache)
-  ->Arg(10)
-  ->Arg(100)
-  ->Arg(1000)
-  ->Unit(benchmark::kMillisecond);
-
 BENCHMARK_REGISTER_F(ManyComponentFixture, Each5ComponentNoCache)
   ->Arg(10)
   ->Arg(100)
   ->Arg(1000)
+  ->Arg(10000)
   ->Unit(benchmark::kMillisecond);
 
 BENCHMARK_REGISTER_F(ManyComponentFixture, Each5ComponentCache)
   ->Arg(10)
   ->Arg(100)
   ->Arg(1000)
+  ->Arg(10000)
   ->Unit(benchmark::kMillisecond);
 
-BENCHMARK_REGISTER_F(ManyComponentFixture, Each10ComponentNoCache)
+BENCHMARK_REGISTER_F(ManyComponentFixture, Each1ComponentGet4More)
   ->Arg(10)
   ->Arg(100)
   ->Arg(1000)
-  ->Unit(benchmark::kMillisecond);
-
-BENCHMARK_REGISTER_F(ManyComponentFixture, Each10ComponentCache)
-  ->Arg(10)
-  ->Arg(100)
-  ->Arg(1000)
+  ->Arg(10000)
   ->Unit(benchmark::kMillisecond);
 
 // OSX needs the semicolon, Ubuntu complains that there's an extra ';'

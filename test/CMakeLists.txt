@@ -5,6 +5,7 @@ include_directories (
   ${PROJECT_BINARY_DIR}/include
 )
 
+add_subdirectory(benchmark)
 add_subdirectory(gtest_vendor)
 add_subdirectory(plugins)
 add_subdirectory(worlds)

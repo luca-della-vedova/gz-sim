@@ -2932,8 +2932,9 @@ TEST_P(EntityComponentManagerFixture,
   auto grandChildParentComp =
     manager.Component<components::ParentEntity>(grandChildEntity1);
   ASSERT_NE(nullptr, grandChildParentComp);
+  Entity grandChildParent = grandChildParentComp->Data();
   auto clonedGrandChildEntity = manager.Clone(grandChildEntity1,
-      grandChildParentComp->Data(), "", allowRename);
+      grandChildParent, "", allowRename);
   EXPECT_EQ(9u, manager.EntityCount());
   clonedEntities.insert(clonedGrandChildEntity);
   validateGrandChildClone(clonedGrandChildEntity, true);
@@ -2944,7 +2945,7 @@ TEST_P(EntityComponentManagerFixture,
   EXPECT_NE(kNullEntity,
       manager.EntityByComponents(components::Name(existingName)));
   auto renamedClonedEntity = manager.Clone(grandChildEntity1,
-      grandChildParentComp->Data(), existingName, allowRename);
+      grandChildParent, existingName, allowRename);
   EXPECT_EQ(10u, manager.EntityCount());
   clonedEntities.insert(clonedGrandChildEntity);
   validateGrandChildClone(renamedClonedEntity, true);
@@ -2952,7 +2953,7 @@ TEST_P(EntityComponentManagerFixture,
   // Try cloning an entity with a name that already exists, without allowing
   // renaming. This should fail since entities should have unique names.
   auto failedClonedEntity = manager.Clone(grandChildEntity1,
-      grandChildParentComp->Data(), existingName, noAllowRename);
+      grandChildParent, existingName, noAllowRename);
   EXPECT_EQ(10u, manager.EntityCount());
   EXPECT_EQ(kNullEntity, failedClonedEntity);
 
