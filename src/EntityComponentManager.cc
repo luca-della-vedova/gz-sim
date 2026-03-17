@@ -2250,11 +2250,9 @@ void EntityComponentManager::CopyFrom(const EntityComponentManager &_fromEcm)
   // TODO(luca) optional query instead of has call for perf
   _fromEcm.world.each<SimEntity>([&](flecs::entity e, const SimEntity&) {
     flecs::entity destEntity = this->world.entity(this->dataPtr->CreateEntityImplementation(this->world, e.id() - _fromEcm.EntityOffset()) + this->EntityOffset());
-    destEntity.add<SimEntity>();
-    destEntity.add<ModifiedComponent>();
-    if (e.has<NewEntity>()) destEntity.add<NewEntity>();
+    if (!e.has<NewEntity>()) destEntity.remove<NewEntity>();
     if (e.has<RemoveEntity>()) destEntity.add<RemoveEntity>();
-    if (!e.enabled<ModifiedComponent>()) destEntity.disable<ModifiedComponent>();
+    if (e.enabled<ModifiedComponent>()) destEntity.enable<ModifiedComponent>();
     if (e.has<PinnedEntity>()) destEntity.add<PinnedEntity>();
 
     e.each([&](flecs::id compId) {

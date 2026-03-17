@@ -182,7 +182,6 @@ template<typename ...ComponentTypeTs>
 Entity EntityComponentManager::EntityByComponents(
     const ComponentTypeTs &..._desiredComponents) const
 {
-  Entity result{kNullEntity};
   auto key = detail::ComponentTypeKey{ComponentTypeTs::typeId...};
   const flecs::query_t* q_ptr = this->QueryPtr(key);
   if (q_ptr == nullptr)
@@ -193,37 +192,12 @@ Entity EntityComponentManager::EntityByComponents(
   }
 
   flecs::query<const ComponentTypeTs...> q(const_cast<flecs::query_t*>(q_ptr));
-  q.run([&](flecs::iter& _it) {
-    while (_it.next()) {
-      for (auto i : _it) {
-        flecs::entity entity = _it.entity(i);
-        Entity gzEntity = entity.id() - this->EntityOffset();
-        bool different{false};
-
-        // Iterate over desired components, comparing each of them to the
-        // equivalent component in the entity.
-        ForEach([&](const auto &_desiredComponent)
-        {
-          // TODO(luca) Use the component from the query here rather than calling Component again
-          auto entityComponent = this->Component<
-              std::remove_cv_t<std::remove_reference_t<
-                  decltype(_desiredComponent)>>>(gzEntity);
-
-          if (*entityComponent != _desiredComponent)
-          {
-            different = true;
-          }
-        }, _desiredComponents...);
-
-        if (!different)
-        {
-          result = gzEntity;
-          break;
-        }
-      }
-    }
+  flecs::entity result = q.find([&](const ComponentTypeTs&... actualComponents) {
+    return ((actualComponents == _desiredComponents) && ...);
   });
-  return result;
+  if (result)
+    return result.id() - this->EntityOffset();
+  return kNullEntity;
 }
 
 //////////////////////////////////////////////////
@@ -242,33 +216,11 @@ std::vector<Entity> EntityComponentManager::EntitiesByComponents(
   }
 
   flecs::query<const ComponentTypeTs...> q(const_cast<flecs::query_t*>(q_ptr));
-  q.run([&](flecs::iter& _it) {
-    while (_it.next()) {
-      for (auto i : _it) {
-        flecs::entity entity = _it.entity(i);
-        Entity gzEntity = entity.id() - this->EntityOffset();
-        bool different{false};
-
-        // Iterate over desired components, comparing each of them to the
-        // equivalent component in the entity.
-        ForEach([&](const auto &_desiredComponent)
-        {
-          // TODO(luca) Use the component from the query here rather than calling Component again
-          auto entityComponent = this->Component<
-              std::remove_cv_t<std::remove_reference_t<
-                  decltype(_desiredComponent)>>>(gzEntity);
-
-          if (*entityComponent != _desiredComponent)
-          {
-            different = true;
-          }
-        }, _desiredComponents...);
-
-        if (!different)
-        {
-          result.push_back(gzEntity);
-        }
-      }
+  const auto offset = this->EntityOffset();
+  q.each([&](flecs::entity e, const ComponentTypeTs&... actualComponents) {
+    if (((actualComponents == _desiredComponents) && ...))
+    {
+      result.push_back(e.id() - offset);
     }
   });
   return result;
@@ -281,33 +233,11 @@ std::vector<Entity> EntityComponentManager::ChildrenByComponents(Entity _parent,
 {
   std::vector<Entity> result;
   flecs::query<const ComponentTypeTs...> q = this->world.query_builder<const ComponentTypeTs...>().with(flecs::ChildOf, _parent + this->EntityOffset()).build();
-  q.run([&](flecs::iter& _it) {
-    while (_it.next()) {
-      for (auto i : _it) {
-        flecs::entity entity = _it.entity(i);
-        Entity gzEntity = entity.id() - this->EntityOffset();
-        bool different{false};
-
-        // Iterate over desired components, comparing each of them to the
-        // equivalent component in the entity.
-        ForEach([&](const auto &_desiredComponent)
-        {
-          // TODO(luca) Use the component from the query here rather than calling Component again
-          auto entityComponent = this->Component<
-              std::remove_cv_t<std::remove_reference_t<
-                  decltype(_desiredComponent)>>>(gzEntity);
-
-          if (*entityComponent != _desiredComponent)
-          {
-            different = true;
-          }
-        }, _desiredComponents...);
-
-        if (!different)
-        {
-          result.push_back(gzEntity);
-        }
-      }
+  const auto offset = this->EntityOffset();
+  q.each([&](flecs::entity e, const ComponentTypeTs&... actualComponents) {
+    if (((actualComponents == _desiredComponents) && ...))
+    {
+      result.push_back(e.id() - offset);
     }
   });
   return result;
@@ -501,6 +431,7 @@ void EntityComponentManager::EachRemoved(typename identity<std::function<
         if (!detail::applyEach<const ComponentTypeTs...>(
               _f, gzEntity, _it, i, std::index_sequence_for<ComponentTypeTs...>{}, 1))
         {
+          _it.fini();
           return;
         }
       }
