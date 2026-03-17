@@ -597,6 +597,15 @@ namespace gz
       public: void UpdatePeriodicChangeCache(std::unordered_map<ComponentTypeId,
         std::unordered_set<Entity>>&) const;
 
+      /// \brief Enable deferring of structural changes.
+      public: void DeferBegin();
+
+      /// \brief Disable deferring of structural changes.
+      public: void DeferEnd();
+
+      /// \brief Checks if the world is in a deferred state.
+      public: bool IsDeferred() const;
+
       /// \brief Set the absolute state of the ECM from a serialized message.
       /// Entities / components that are in the new state but not in the old
       /// one will be created.

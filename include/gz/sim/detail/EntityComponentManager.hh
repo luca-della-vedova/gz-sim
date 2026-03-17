@@ -268,32 +268,6 @@ void EntityComponentManager::EachNoCache(typename identity<std::function<
   this->Each<ComponentTypeTs...>(_f);
 }
 
-namespace detail
-{
-/// \brief Helper template to call a callback function with each of the
-/// components in the flecs iterator expanded as arguments to the callback
-/// function.
-/// \tparam ComponentTypeTs The actual types of each of the components.
-/// \tparam FuncT The type of the callback function.
-/// \tparam Is Index sequence that will be used to iterate through the flecs
-/// iterator fields.
-/// \param[in] _f The callback function
-/// \param[in] _entity The entity associated with the components.
-/// \param[in] _it The flecs iterator.
-/// \param[in] _row The row index in the iterator.
-/// \return The value returned by the function _f.
-template <typename... ComponentTypeTs, typename FuncT, std::size_t... Is>
-bool applyEach(const FuncT &_f, const Entity &_entity, flecs::iter &_it,
-               std::size_t _row, std::index_sequence<Is...>, std::size_t offset = 0)
-{
-  // Silence warnings of unused _row for empty queries
-  (void)_row;
-  return _f(_entity,
-            static_cast<ComponentTypeTs *>(_it.field_at(Is + offset, _row))...);
-}
-
-}  // namespace detail
-
 //////////////////////////////////////////////////
 template<typename ...ComponentTypeTs>
 void EntityComponentManager::Each(typename identity<std::function<
@@ -303,28 +277,17 @@ void EntityComponentManager::Each(typename identity<std::function<
   const flecs::query_t* q_ptr = this->QueryPtr(key);
   if (q_ptr == nullptr)
   {
-    flecs::query<const ComponentTypeTs...> q = this->world.query<const ComponentTypeTs...>();
+    flecs::query<const ComponentTypeTs...> q = this->world.query_builder<const ComponentTypeTs...>()
+        .cached()
+        .build();
     this->SetQueryPtr(key, q);
     q_ptr = q.c_ptr();
   }
-
   flecs::query<const ComponentTypeTs...> q(const_cast<flecs::query_t*>(q_ptr));
-  this->world.defer_begin();
-  q.run([&](flecs::iter& _it) {
-    while (_it.next()) {
-      for (auto i : _it) {
-        flecs::entity entity = _it.entity(i);
-        Entity gzEntity = entity.id() - this->EntityOffset();
-        if (!detail::applyEach<const ComponentTypeTs...>(
-              _f, gzEntity, _it, i, std::index_sequence_for<ComponentTypeTs...>{}))
-        {
-          _it.fini();
-          return;
-        }
-      }
-    }
+  const auto offset = this->EntityOffset();
+  q.find([&](flecs::entity e, const ComponentTypeTs&... comps) {
+    return !_f(e.id() - offset, &comps...);
   });
-  this->world.defer_end();
 }
 
 //////////////////////////////////////////////////
@@ -332,31 +295,25 @@ template<typename ...ComponentTypeTs>
 void EntityComponentManager::Each(typename identity<std::function<
     bool(const Entity &_entity, ComponentTypeTs *...)>>::type _f)
 {
+  // If it is not deferred we need to apply it ourselves
+  const bool applyDefer = !this->IsDeferred();
   auto key = detail::ComponentTypeKey{ComponentTypeTs::typeId...};
   const flecs::query_t* q_ptr = this->QueryPtr(key);
   if (q_ptr == nullptr)
   {
-    flecs::query<ComponentTypeTs...> q = this->world.query<ComponentTypeTs...>();
+    flecs::query<ComponentTypeTs...> q = this->world.query_builder<ComponentTypeTs...>()
+        .build();
     this->SetQueryPtr(key, q);
     q_ptr = q.c_ptr();
   }
 
   flecs::query<ComponentTypeTs...> q(const_cast<flecs::query_t*>(q_ptr));
-  this->world.defer_begin();
-  q.run([&](flecs::iter& _it) {
-    while (_it.next()) {
-      for (auto i : _it) {
-        flecs::entity entity = _it.entity(i);
-        Entity gzEntity = entity.id() - this->EntityOffset();
-        if (!detail::applyEach<ComponentTypeTs...>(
-              _f, gzEntity, _it, i, std::index_sequence_for<ComponentTypeTs...>{}))
-        {
-          return;
-        }
-      }
-    }
+  const auto offset = this->EntityOffset();
+  if (applyDefer) this->DeferBegin();
+  q.find([&](flecs::entity e, ComponentTypeTs&... comps) {
+    return !_f(e.id() - offset, &comps...);
   });
-  this->world.defer_end();
+  if (applyDefer) this->DeferEnd();
 }
 
 //////////////////////////////////////////////////
@@ -373,23 +330,17 @@ template <typename... ComponentTypeTs>
 void EntityComponentManager::EachNew(typename identity<std::function<
     bool(const Entity &_entity, ComponentTypeTs *...)>>::type _f)
 {
-  flecs::query<NewEntity, ComponentTypeTs...> q = this->world.query<NewEntity, ComponentTypeTs...>();
-  this->world.defer_begin();
-  q.run([&](flecs::iter& _it) {
-    while (_it.next()) {
-      for (auto i : _it) {
-        flecs::entity entity = _it.entity(i);
-        Entity gzEntity = entity.id() - this->EntityOffset();
-        if (!detail::applyEach<ComponentTypeTs...>(
-              _f, gzEntity, _it, i, std::index_sequence_for<ComponentTypeTs...>{}, 1))
-        {
-          _it.fini();
-          return;
-        }
-      }
-    }
+  const bool applyDefer = !this->IsDeferred();
+  flecs::query<ComponentTypeTs...> q = this->world.query_builder<ComponentTypeTs...>().
+    template with<NewEntity>().
+    cached().
+    build();
+  const auto offset = this->EntityOffset();
+  if (applyDefer) this->DeferBegin();
+  q.find([&](flecs::entity e, ComponentTypeTs&... comps) {
+    return !_f(e.id() - offset, &comps...);
   });
-  this->world.defer_end();
+  if (applyDefer) this->DeferEnd();
 }
 
 //////////////////////////////////////////////////
@@ -397,23 +348,13 @@ template <typename... ComponentTypeTs>
 void EntityComponentManager::EachNew(typename identity<std::function<
     bool(const Entity &_entity, const ComponentTypeTs *...)>>::type _f) const
 {
-  flecs::query<NewEntity, const ComponentTypeTs...> q = this->world.query<NewEntity, const ComponentTypeTs...>();
-  this->world.defer_begin();
-  q.run([&](flecs::iter& _it) {
-    while (_it.next()) {
-      for (auto i : _it) {
-        flecs::entity entity = _it.entity(i);
-        Entity gzEntity = entity.id() - this->EntityOffset();
-        if (!detail::applyEach<const ComponentTypeTs...>(
-              _f, gzEntity, _it, i, std::index_sequence_for<ComponentTypeTs...>{}, 1))
-        {
-          _it.fini();
-          return;
-        }
-      }
-    }
+  flecs::query<const ComponentTypeTs...> q = this->world.query_builder<const ComponentTypeTs...>().
+    template with<NewEntity>()
+    .build();
+  const auto offset = this->EntityOffset();
+  q.find([&](flecs::entity e, const ComponentTypeTs&... comps) {
+    return !_f(e.id() - offset, &comps...);
   });
-  this->world.defer_end();
 }
 
 //////////////////////////////////////////////////
@@ -421,23 +362,13 @@ template<typename ...ComponentTypeTs>
 void EntityComponentManager::EachRemoved(typename identity<std::function<
     bool(const Entity &_entity, const ComponentTypeTs *...)>>::type _f) const
 {
-  flecs::query<RemoveEntity, const ComponentTypeTs...> q = this->world.query<RemoveEntity, const ComponentTypeTs...>();
-  this->world.defer_begin();
-  q.run([&](flecs::iter& _it) {
-    while (_it.next()) {
-      for (auto i : _it) {
-        flecs::entity entity = _it.entity(i);
-        Entity gzEntity = entity.id() - this->EntityOffset();
-        if (!detail::applyEach<const ComponentTypeTs...>(
-              _f, gzEntity, _it, i, std::index_sequence_for<ComponentTypeTs...>{}, 1))
-        {
-          _it.fini();
-          return;
-        }
-      }
-    }
+  flecs::query<const ComponentTypeTs...> q = this->world.query_builder<const ComponentTypeTs...>().
+    template with<RemoveEntity>()
+    .build();
+  const auto offset = this->EntityOffset();
+  q.find([&](flecs::entity e, const ComponentTypeTs&... comps) {
+    return !_f(e.id() - offset, &comps...);
   });
-  this->world.defer_end();
 }
 
 /*

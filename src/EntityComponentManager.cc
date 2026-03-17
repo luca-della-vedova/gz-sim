@@ -2402,5 +2402,22 @@ void EntityComponentManager::MarkComponentAsRemoved(const Entity& _entity, const
     this->dataPtr->componentsMarkedAsRemoved[_entity].insert(_id);
   else
     this->dataPtr->componentsMarkedAsRemoved[_entity].erase(_id);
+}
 
+//////////////////////////////////////////////////
+void EntityComponentManager::DeferBegin()
+{
+  this->world.defer_begin();
+}
+
+//////////////////////////////////////////////////
+void EntityComponentManager::DeferEnd()
+{
+  this->world.defer_end();
+}
+
+//////////////////////////////////////////////////
+bool EntityComponentManager::IsDeferred() const
+{
+  return this->world.is_deferred();
 }
