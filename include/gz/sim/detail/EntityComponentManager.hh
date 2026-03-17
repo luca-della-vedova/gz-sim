@@ -388,6 +388,7 @@ void EntityComponentManager::Each(typename identity<std::function<
         if (!detail::applyEach<const ComponentTypeTs...>(
               _f, gzEntity, _it, i, std::index_sequence_for<ComponentTypeTs...>{}))
         {
+          _it.fini();
           return;
         }
       }
@@ -433,6 +434,7 @@ template <class Function, class... ComponentTypeTs>
 void EntityComponentManager::ForEach(Function _f,
     const ComponentTypeTs &... _components)
 {
+  (void)_f;
   (_f(_components), ...);
 }
 
@@ -451,6 +453,7 @@ void EntityComponentManager::EachNew(typename identity<std::function<
         if (!detail::applyEach<ComponentTypeTs...>(
               _f, gzEntity, _it, i, std::index_sequence_for<ComponentTypeTs...>{}, 1))
         {
+          _it.fini();
           return;
         }
       }
@@ -474,6 +477,7 @@ void EntityComponentManager::EachNew(typename identity<std::function<
         if (!detail::applyEach<const ComponentTypeTs...>(
               _f, gzEntity, _it, i, std::index_sequence_for<ComponentTypeTs...>{}, 1))
         {
+          _it.fini();
           return;
         }
       }

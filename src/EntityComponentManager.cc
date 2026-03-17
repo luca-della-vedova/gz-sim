@@ -392,7 +392,7 @@ size_t EntityComponentManager::EntityCount() const
 /////////////////////////////////////////////////
 Entity EntityComponentManager::CreateEntity()
 {
-  auto e = this->world.entity().add<SimEntity>().add<NewEntity>().add<ModifiedComponent>().disable<ModifiedComponent>().id();
+  auto e = this->world.entity().add<SimEntity>().add<NewEntity>().add<ModifiedComponent>().disable<ModifiedComponent>().add(flecs::OrderedChildren).id();
   if (e > this->dataPtr->highestAllocatedEntity)
     this->dataPtr->highestAllocatedEntity = e;
   return e - this->dataPtr->entityOffset;
@@ -407,7 +407,7 @@ Entity EntityComponentManagerPrivate::CreateEntityImplementation(flecs::world& w
   auto e = world.entity(desc.id);
   if (e.id() > this->highestAllocatedEntity)
     this->highestAllocatedEntity = e.id();
-  return e.add<SimEntity>().add<NewEntity>().add<ModifiedComponent>().disable<ModifiedComponent>().id() - this->entityOffset;
+  return e.add<SimEntity>().add<NewEntity>().add<ModifiedComponent>().disable<ModifiedComponent>().add(flecs::OrderedChildren).id() - this->entityOffset;
 }
 
 /////////////////////////////////////////////////
