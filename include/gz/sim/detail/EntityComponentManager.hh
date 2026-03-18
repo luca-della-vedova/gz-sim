@@ -231,14 +231,24 @@ std::vector<Entity> EntityComponentManager::ChildrenByComponents(Entity _parent,
 {
   std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   std::vector<Entity> result;
-  flecs::query<const ComponentTypeTs...> q = this->world.query_builder<const ComponentTypeTs...>().with(flecs::ChildOf, _parent + this->EntityOffset()).build();
   const auto offset = this->EntityOffset();
-  q.each([&](flecs::entity e, const ComponentTypeTs&... actualComponents) {
-    if (((actualComponents == _desiredComponents) && ...))
-    {
-      result.push_back(e.id() - offset);
+  flecs::entity p = this->world.entity(_parent + offset);
+
+  p.children([&](flecs::entity child) {
+    bool match = true;
+    ([&]{
+      if (!match) return;
+      const ComponentTypeTs* comp = child.try_get<ComponentTypeTs>();
+      if (!comp || !(*comp == _desiredComponents)) {
+        match = false;
+      }
+    }(), ...);
+
+    if (match) {
+      result.push_back(child.id() - offset);
     }
   });
+
   // TODO(luca) we shouldn't need to do this if we can iterate over children of the parent
   // since we use the flecs::OrderedChildren trait which should iterate children in the order of adding
   // std::sort(result.begin(), result.end());
@@ -256,7 +266,8 @@ struct EntityComponentManager::identity  // NOLINT
 template<typename ...ComponentTypeTs, typename Func>
 void EntityComponentManager::EachNoCache(Func &&_f) const
 {
-  // For now Each itself isn't cached, change this when it is
+  // This is now functionally equivalent since cached queries are always automatically
+  // updated and we don't need an explicit "rebuild cache" call
   this->Each<ComponentTypeTs...>(std::forward<Func>(_f));
 }
 
@@ -264,7 +275,8 @@ void EntityComponentManager::EachNoCache(Func &&_f) const
 template<typename ...ComponentTypeTs, typename Func>
 void EntityComponentManager::EachNoCache(Func &&_f)
 {
-  // For now Each itself isn't cached, change this when it is
+  // This is now functionally equivalent since cached queries are always automatically
+  // updated and we don't need an explicit "rebuild cache" call
   this->Each<ComponentTypeTs...>(std::forward<Func>(_f));
 }
 
