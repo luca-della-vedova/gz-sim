@@ -209,7 +209,7 @@ set(GZ_TOOLS_VER 2)
 gz_find_package(gz-utils REQUIRED COMPONENTS cli)
 
 # Find flecs
-gz_find_package(flecs REQUIRED)
+# gz_find_package(flecs REQUIRED)
 
 #--------------------------------------
 # Find libwebsockets

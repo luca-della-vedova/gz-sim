@@ -99,6 +99,7 @@ set (sources
   ${comms_sources}
   ${msgs_sources}
   ${material_sources}
+  flecs.c
 )
 
 set (gtest_sources
@@ -165,6 +166,12 @@ endif()
 
 # Create the library target
 gz_create_core_library(SOURCES ${sources} CXX_STANDARD 17)
+
+target_compile_definitions(${PROJECT_LIBRARY_TARGET_NAME}
+  PRIVATE
+  flecs_EXPORTS
+)
+
 gz_add_get_install_prefix_impl(GET_INSTALL_PREFIX_FUNCTION gz::sim::getInstallPrefix
                                GET_INSTALL_PREFIX_HEADER gz/sim/InstallationDirectories.hh
                                OVERRIDE_INSTALL_PREFIX_ENV_VARIABLE GZ_SIM_INSTALL_PREFIX)
@@ -196,7 +203,7 @@ target_link_libraries(${PROJECT_LIBRARY_TARGET_NAME}
   gz-transport::parameters
   sdformat::sdformat
   protobuf::libprotobuf
-  flecs::flecs
+  # flecs::flecs
   PRIVATE
   gz-plugin::loader
 )

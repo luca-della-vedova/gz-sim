@@ -12,7 +12,7 @@
 
   <depend>benchmark</depend>
   <depend>binutils</depend>
-  <depend>flecs</depend>
+  <!--depend>flecs</depend-->
   <depend>glut</depend>
   <depend>gz-cmake</depend>
   <depend>gz-common</depend>
