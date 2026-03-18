@@ -2244,9 +2244,14 @@ void EntityComponentManager::CopyFrom(const EntityComponentManager &_fromEcm)
   this->world.from_json(_fromEcm.world.to_json());
   std::cerr << _fromEcm.world.to_json() << std::endl;
   */
-  this->world.delete_with<SimEntity>();
+  // this->world.delete_with<SimEntity>();
+  this->world.defer_begin();
+  this->world.query<SimEntity>().each([this](flecs::entity e, const SimEntity&) {
+    e.clear();
+    e.disable();
+  });
+  this->world.defer_end();
   this->dataPtr->CopyFrom(*_fromEcm.dataPtr);
-
   // TODO(luca) optional query instead of has call for perf
   _fromEcm.world.each<SimEntity>([&](flecs::entity e, const SimEntity&) {
     flecs::entity destEntity = this->world.entity(this->dataPtr->CreateEntityImplementation(this->world, e.id() - _fromEcm.EntityOffset()) + this->EntityOffset());
