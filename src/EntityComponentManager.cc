@@ -76,11 +76,6 @@ class gz::sim::EntityComponentManagerPrivate
     return typeIdIt->second;
   }
 
-  public: mutable std::unordered_map<detail::ComponentTypeKey,
-          flecs::query_base, detail::ComponentTypeHasher> queryCache;
-
-  public: mutable std::mutex queryCacheMutex;
-
   public: std::vector<Entity> Entities(const flecs::world& world) const {
     // Reserve if count is fast?
     std::vector<Entity> entities;
@@ -2377,27 +2372,6 @@ std::optional<Entity> EntityComponentManager::EntityByName(
 Entity EntityComponentManager::EntityOffset() const
 {
   return this->dataPtr->entityOffset;
-}
-
-/////////////////////////////////////////////////
-const flecs::query_t* EntityComponentManager::QueryPtr(
-    const detail::ComponentTypeKey &_types) const
-{
-  std::lock_guard<std::mutex> lock(this->dataPtr->queryCacheMutex);
-  auto it = this->dataPtr->queryCache.find(_types);
-  if (it != this->dataPtr->queryCache.end())
-  {
-    return it->second.c_ptr();
-  }
-  return nullptr;
-}
-
-/////////////////////////////////////////////////
-void EntityComponentManager::SetQueryPtr(const detail::ComponentTypeKey &_types,
-                                         const flecs::query_base &_query) const
-{
-  std::lock_guard<std::mutex> lock(this->dataPtr->queryCacheMutex);
-  this->dataPtr->queryCache[_types] = _query;
 }
 
 /////////////////////////////////////////////////

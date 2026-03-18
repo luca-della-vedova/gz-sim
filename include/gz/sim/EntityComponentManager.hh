@@ -824,17 +824,6 @@ namespace gz
       /// \brief Gets the entity offset to apply to entity functions
       private: Entity EntityOffset() const;
 
-      /// \brief Find a flecs query for a set of component types.
-      /// \param[in] _types The set of component type ids that act as the key.
-      /// \return The flecs query pointer, or nullptr if not found.
-      private: const flecs::query_t* QueryPtr(const detail::ComponentTypeKey &_types) const;
-
-      /// \brief Cache a flecs query for a set of component types.
-      /// \param[in] _types The set of component type ids that act as the key.
-      /// \param[in] _query The flecs query to cache.
-      private: void SetQueryPtr(const detail::ComponentTypeKey &_types,
-                                const flecs::query_base &_query) const;
-
       /// \brief Marks the component as removed for changed state tracking
       private: void MarkComponentAsRemoved(const Entity& _entity, const ComponentTypeId _id, bool _removed);
 
