@@ -105,6 +105,7 @@ template<typename ComponentTypeT>
 ComponentTypeT *EntityComponentManager::CreateComponent(const Entity _entity,
             const ComponentTypeT &_data)
 {
+  std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   if (!this->HasEntity(_entity))
     return nullptr;
   flecs::entity e = this->world.entity(_entity + this->EntityOffset());
@@ -119,6 +120,7 @@ template<typename ComponentTypeT>
 const ComponentTypeT *EntityComponentManager::Component(
     const Entity _entity) const
 {
+  std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   if (!this->HasEntity(_entity))
     return nullptr;
   flecs::entity e = this->world.entity(_entity + this->EntityOffset());
@@ -129,6 +131,7 @@ const ComponentTypeT *EntityComponentManager::Component(
 template<typename ComponentTypeT>
 ComponentTypeT *EntityComponentManager::Component(const Entity _entity)
 {
+  std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   if (!this->HasEntity(_entity))
     return nullptr;
   flecs::entity e = this->world.entity(_entity + this->EntityOffset());
@@ -182,6 +185,7 @@ template<typename ...ComponentTypeTs>
 Entity EntityComponentManager::EntityByComponents(
     const ComponentTypeTs &..._desiredComponents) const
 {
+  std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   auto key = detail::ComponentTypeKey{ComponentTypeTs::typeId...};
   const flecs::query_t* q_ptr = this->QueryPtr(key);
   if (q_ptr == nullptr)
@@ -205,6 +209,7 @@ template<typename ...ComponentTypeTs>
 std::vector<Entity> EntityComponentManager::EntitiesByComponents(
     const ComponentTypeTs &..._desiredComponents) const
 {
+  std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   std::vector<Entity> result;
   auto key = detail::ComponentTypeKey{ComponentTypeTs::typeId...};
   const flecs::query_t* q_ptr = this->QueryPtr(key);
@@ -231,6 +236,7 @@ template<typename ...ComponentTypeTs>
 std::vector<Entity> EntityComponentManager::ChildrenByComponents(Entity _parent,
      const ComponentTypeTs &..._desiredComponents) const
 {
+  std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   std::vector<Entity> result;
   flecs::query<const ComponentTypeTs...> q = this->world.query_builder<const ComponentTypeTs...>().with(flecs::ChildOf, _parent + this->EntityOffset()).build();
   const auto offset = this->EntityOffset();
@@ -273,6 +279,7 @@ template<typename ...ComponentTypeTs>
 void EntityComponentManager::Each(typename identity<std::function<
     bool(const Entity &_entity, const ComponentTypeTs *...)>>::type _f) const
 {
+  std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   auto key = detail::ComponentTypeKey{ComponentTypeTs::typeId...};
   const flecs::query_t* q_ptr = this->QueryPtr(key);
   if (q_ptr == nullptr)
@@ -295,6 +302,7 @@ template<typename ...ComponentTypeTs>
 void EntityComponentManager::Each(typename identity<std::function<
     bool(const Entity &_entity, ComponentTypeTs *...)>>::type _f)
 {
+  std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   // If it is not deferred we need to apply it ourselves
   const bool applyDefer = !this->IsDeferred();
   auto key = detail::ComponentTypeKey{ComponentTypeTs::typeId...};
@@ -330,6 +338,7 @@ template <typename... ComponentTypeTs>
 void EntityComponentManager::EachNew(typename identity<std::function<
     bool(const Entity &_entity, ComponentTypeTs *...)>>::type _f)
 {
+  std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   const bool applyDefer = !this->IsDeferred();
   flecs::query<ComponentTypeTs...> q = this->world.query_builder<ComponentTypeTs...>().
     template with<NewEntity>().
@@ -348,6 +357,7 @@ template <typename... ComponentTypeTs>
 void EntityComponentManager::EachNew(typename identity<std::function<
     bool(const Entity &_entity, const ComponentTypeTs *...)>>::type _f) const
 {
+  std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   flecs::query<const ComponentTypeTs...> q = this->world.query_builder<const ComponentTypeTs...>().
     template with<NewEntity>()
     .build();
@@ -362,6 +372,7 @@ template<typename ...ComponentTypeTs>
 void EntityComponentManager::EachRemoved(typename identity<std::function<
     bool(const Entity &_entity, const ComponentTypeTs *...)>>::type _f) const
 {
+  std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   flecs::query<const ComponentTypeTs...> q = this->world.query_builder<const ComponentTypeTs...>().
     template with<RemoveEntity>()
     .build();
@@ -445,6 +456,7 @@ detail::View *EntityComponentManager::FindView() const
 template<typename ComponentTypeT>
 bool EntityComponentManager::RemoveComponent(Entity _entity)
 {
+  std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   if (!this->HasEntity(_entity))
     return false;
   flecs::entity e = this->world.entity(_entity + this->EntityOffset());

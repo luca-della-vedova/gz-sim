@@ -33,6 +33,7 @@
 
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <string>
@@ -827,6 +828,9 @@ namespace gz
 
       // TODO(luca) can we put this in the dataPtr? Tough because a templated function needs to access it to operate on components
       private: flecs::world world;
+
+      /// \brief A mutex to protect flecs world access.
+      private: mutable std::recursive_mutex flecsWorldMutex;
 
       /// \brief Private data pointer.
       private: std::unique_ptr<EntityComponentManagerPrivate> dataPtr;
