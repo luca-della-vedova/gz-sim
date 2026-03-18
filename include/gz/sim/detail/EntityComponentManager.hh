@@ -105,7 +105,6 @@ template<typename ComponentTypeT>
 ComponentTypeT *EntityComponentManager::CreateComponent(const Entity _entity,
             const ComponentTypeT &_data)
 {
-  std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   if (!this->HasEntity(_entity))
     return nullptr;
   flecs::entity e = this->world.entity(_entity + this->EntityOffset());
@@ -306,7 +305,6 @@ void EntityComponentManager::Each(Func &&_f) const
 template<typename ...ComponentTypeTs, typename Func>
 void EntityComponentManager::Each(Func &&_f)
 {
-  std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   static flecs::query<ComponentTypeTs...> q = this->world.query_builder<ComponentTypeTs...>()
     .cached()
     .build();
@@ -339,7 +337,6 @@ void EntityComponentManager::ForEach(Function _f,
 template <typename... ComponentTypeTs, typename Func>
 void EntityComponentManager::EachNew(Func &&_f)
 {
-  std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   static flecs::query<ComponentTypeTs...> q = this->world.query_builder<ComponentTypeTs...>().
     template with<NewEntity>().
     cached().
@@ -407,81 +404,10 @@ void EntityComponentManager::EachRemoved(Func &&_f) const
   });
 }
 
-/*
-//////////////////////////////////////////////////
-template<typename ...ComponentTypeTs>
-detail::View *EntityComponentManager::FindView() const
-{
-  auto viewKey = std::vector<ComponentTypeId>{ComponentTypeTs::typeId...};
-
-  auto baseViewMutexPair = this->FindView(viewKey);
-  auto baseViewPtr = baseViewMutexPair.first;
-  if (nullptr != baseViewPtr)
-  {
-    auto view = static_cast<detail::View*>(baseViewPtr);
-
-    std::unique_ptr<std::lock_guard<std::mutex>> viewLock;
-    if (this->LockAddingEntitiesToViews())
-    {
-      // lock the mutex unique to this view in order to prevent multiple threads
-      // from concurrently reading/modifying the view's toAddEntities data
-      // (for example, this is useful in system PostUpdates since they are run
-      // in parallel)
-      auto mutexPtr = baseViewMutexPair.second;
-      if (nullptr == mutexPtr)
-      {
-        gzerr << "Internal error: requested to lock a view, but no mutex "
-          << "exists for this view. This should never happen!" << std::endl;
-        return view;
-      }
-      viewLock = std::make_unique<std::lock_guard<std::mutex>>(*mutexPtr);
-    }
-
-    // add any new entities to the view before using it
-    for (const auto &[entity, isNew] : view->ToAddEntities())
-    {
-      view->AddEntityWithConstComps(entity, isNew,
-          this->Component<ComponentTypeTs>(entity)...);
-      view->AddEntityWithComps(entity, isNew,
-          const_cast<EntityComponentManager*>(this)->Component<ComponentTypeTs>(
-            entity)...);
-    }
-    view->ClearToAddEntities();
-
-    return view;
-  }
-
-  // create a new view if one wasn't found
-  detail::View view(std::set<ComponentTypeId>{ComponentTypeTs::typeId...});
-
-  for (const auto &vertex : this->Entities().Vertices())
-  {
-    Entity entity = vertex.first;
-
-    // only add entities to the view that have all of the components in viewKey
-    if (!this->EntityMatches(entity, view.ComponentTypes()))
-      continue;
-
-    view.AddEntityWithConstComps(entity, this->IsNewEntity(entity),
-        this->Component<ComponentTypeTs>(entity)...);
-    view.AddEntityWithComps(entity, this->IsNewEntity(entity),
-        const_cast<EntityComponentManager*>(this)->Component<ComponentTypeTs>(
-            entity)...);
-    if (this->IsMarkedForRemoval(entity))
-      view.MarkEntityToRemove(entity);
-  }
-
-  baseViewPtr = this->AddView(viewKey,
-      std::make_unique<detail::View>(std::move(view)));
-  return static_cast<detail::View *>(baseViewPtr);
-}
-
-*/
 //////////////////////////////////////////////////
 template<typename ComponentTypeT>
 bool EntityComponentManager::RemoveComponent(Entity _entity)
 {
-  std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   if (!this->HasEntity(_entity))
     return false;
   flecs::entity e = this->world.entity(_entity + this->EntityOffset());
