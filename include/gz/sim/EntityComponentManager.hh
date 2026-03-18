@@ -412,10 +412,8 @@ namespace gz
       /// \tparam ComponentTypeTs All the desired component types.
       /// \warning This function should not be called outside of System's
       /// PreUpdate, Update, or PostUpdate callbacks.
-      public: template<typename ...ComponentTypeTs>
-              void EachNoCache(typename identity<std::function<
-                  bool(const Entity &_entity,
-                       const ComponentTypeTs *...)>>::type _f) const;
+      public: template<typename ...ComponentTypeTs, typename Func>
+              void EachNoCache(Func &&_f) const;
 
       /// \brief A version of Each() that doesn't use a cache. The cached
       /// version, Each(), is preferred.
@@ -429,10 +427,8 @@ namespace gz
       /// \tparam ComponentTypeTs All the desired mutable component types.
       /// \warning This function should not be called outside of System's
       /// PreUpdate, Update, or PostUpdate callbacks.
-      public: template<typename ...ComponentTypeTs>
-              void EachNoCache(typename identity<std::function<
-                  bool(const Entity &_entity,
-                       ComponentTypeTs *...)>>::type _f);
+      public: template<typename ...ComponentTypeTs, typename Func>
+              void EachNoCache(Func &&_f);
 
       /// \brief Get all entities which contain given component types, as well
       /// as the components. Note that an entity marked for removal (but not
@@ -446,10 +442,8 @@ namespace gz
       /// \tparam ComponentTypeTs All the desired component types.
       /// \warning This function should not be called outside of System's
       /// PreUpdate, Update, or PostUpdate callbacks.
-      public: template<typename ...ComponentTypeTs>
-              void Each(typename identity<std::function<
-                  bool(const Entity &_entity,
-                       const ComponentTypeTs *...)>>::type _f) const;
+      public: template<typename ...ComponentTypeTs, typename Func>
+              void Each(Func &&_f) const;
 
       /// \brief Get all entities which contain given component types, as well
       /// as the mutable components. Note that an entity marked for removal (but
@@ -463,10 +457,8 @@ namespace gz
       /// \tparam ComponentTypeTs All the desired mutable component types.
       /// \warning This function should not be called outside of System's
       /// PreUpdate, Update, or PostUpdate callbacks.
-      public: template<typename ...ComponentTypeTs>
-              void Each(typename identity<std::function<
-                  bool(const Entity &_entity,
-                       ComponentTypeTs *...)>>::type _f);
+      public: template<typename ...ComponentTypeTs, typename Func>
+              void Each(Func &&_f);
 
       /// \brief Call a function for each parameter in a pack.
       /// \param[in] _f Function to be called.
@@ -489,10 +481,8 @@ namespace gz
       /// call this function in the Update callback). If you need to call this
       /// function in a system's PostUpdate callback, you should use the const
       /// version of this method.
-      public: template <typename... ComponentTypeTs>
-              void EachNew(typename identity<std::function<
-                           bool(const Entity &_entity,
-                                ComponentTypeTs *...)>>::type _f);
+      public: template <typename... ComponentTypeTs, typename Func>
+              void EachNew(Func &&_f);
 
       /// \brief Get all newly created entities which contain given component
       /// types, as well as the components. This "newness" is cleared at the end
@@ -506,10 +496,8 @@ namespace gz
       /// \warning Since entity creation occurs during PreUpdate, this function
       /// should not be called in a System's PreUpdate callback (it's okay to
       /// call this function in the Update or PostUpdate callback).
-      public: template <typename... ComponentTypeTs>
-              void EachNew(typename identity<std::function<
-                           bool(const Entity &_entity,
-                                const ComponentTypeTs *...)>>::type _f) const;
+      public: template <typename... ComponentTypeTs, typename Func>
+              void EachNew(Func &&_f) const;
 
       /// \brief Get all entities which contain given component types and are
       /// about to be removed, as well as the components.
@@ -521,10 +509,8 @@ namespace gz
       /// \tparam ComponentTypeTs All the desired component types.
       /// \warning This function should not be called outside of System's
       /// PostUpdate callback.
-      public: template<typename ...ComponentTypeTs>
-              void EachRemoved(typename identity<std::function<
-                  bool(const Entity &_entity,
-                       const ComponentTypeTs *...)>>::type _f) const;
+      public: template<typename ...ComponentTypeTs, typename Func>
+              void EachRemoved(Func &&_f) const;
 
       /// \brief Get all the entities.
       /// \return A vector of entities

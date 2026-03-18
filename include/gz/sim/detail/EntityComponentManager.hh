@@ -257,27 +257,24 @@ struct EntityComponentManager::identity  // NOLINT
 };
 
 //////////////////////////////////////////////////
-template<typename ...ComponentTypeTs>
-void EntityComponentManager::EachNoCache(typename identity<std::function<
-    bool(const Entity &_entity, const ComponentTypeTs *...)>>::type _f) const
+template<typename ...ComponentTypeTs, typename Func>
+void EntityComponentManager::EachNoCache(Func &&_f) const
 {
   // For now Each itself isn't cached, change this when it is
-  this->Each<ComponentTypeTs...>(_f);
+  this->Each<ComponentTypeTs...>(std::forward<Func>(_f));
 }
 
 //////////////////////////////////////////////////
-template<typename ...ComponentTypeTs>
-void EntityComponentManager::EachNoCache(typename identity<std::function<
-    bool(const Entity &_entity, ComponentTypeTs *...)>>::type _f)
+template<typename ...ComponentTypeTs, typename Func>
+void EntityComponentManager::EachNoCache(Func &&_f)
 {
   // For now Each itself isn't cached, change this when it is
-  this->Each<ComponentTypeTs...>(_f);
+  this->Each<ComponentTypeTs...>(std::forward<Func>(_f));
 }
 
 //////////////////////////////////////////////////
-template<typename ...ComponentTypeTs>
-void EntityComponentManager::Each(typename identity<std::function<
-    bool(const Entity &_entity, const ComponentTypeTs *...)>>::type _f) const
+template<typename ...ComponentTypeTs, typename Func>
+void EntityComponentManager::Each(Func &&_f) const
 {
   std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   auto key = detail::ComponentTypeKey{ComponentTypeTs::typeId...};
@@ -297,10 +294,10 @@ void EntityComponentManager::Each(typename identity<std::function<
   });
 }
 
+// This is run in the benchmark
 //////////////////////////////////////////////////
-template<typename ...ComponentTypeTs>
-void EntityComponentManager::Each(typename identity<std::function<
-    bool(const Entity &_entity, ComponentTypeTs *...)>>::type _f)
+template<typename ...ComponentTypeTs, typename Func>
+void EntityComponentManager::Each(Func &&_f)
 {
   std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   // If it is not deferred we need to apply it ourselves
@@ -334,9 +331,8 @@ void EntityComponentManager::ForEach(Function _f,
 }
 
 //////////////////////////////////////////////////
-template <typename... ComponentTypeTs>
-void EntityComponentManager::EachNew(typename identity<std::function<
-    bool(const Entity &_entity, ComponentTypeTs *...)>>::type _f)
+template <typename... ComponentTypeTs, typename Func>
+void EntityComponentManager::EachNew(Func &&_f)
 {
   std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   const bool applyDefer = !this->IsDeferred();
@@ -353,9 +349,8 @@ void EntityComponentManager::EachNew(typename identity<std::function<
 }
 
 //////////////////////////////////////////////////
-template <typename... ComponentTypeTs>
-void EntityComponentManager::EachNew(typename identity<std::function<
-    bool(const Entity &_entity, const ComponentTypeTs *...)>>::type _f) const
+template <typename... ComponentTypeTs, typename Func>
+void EntityComponentManager::EachNew(Func &&_f) const
 {
   std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   flecs::query<const ComponentTypeTs...> q = this->world.query_builder<const ComponentTypeTs...>().
@@ -368,9 +363,8 @@ void EntityComponentManager::EachNew(typename identity<std::function<
 }
 
 //////////////////////////////////////////////////
-template<typename ...ComponentTypeTs>
-void EntityComponentManager::EachRemoved(typename identity<std::function<
-    bool(const Entity &_entity, const ComponentTypeTs *...)>>::type _f) const
+template<typename ...ComponentTypeTs, typename Func>
+void EntityComponentManager::EachRemoved(Func &&_f) const
 {
   std::lock_guard<std::recursive_mutex> lock(this->flecsWorldMutex);
   flecs::query<const ComponentTypeTs...> q = this->world.query_builder<const ComponentTypeTs...>().
