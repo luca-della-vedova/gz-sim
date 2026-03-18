@@ -403,8 +403,8 @@ Entity EntityComponentManagerPrivate::CreateEntityImplementation(flecs::world& w
 {
   ecs_entity_desc_t desc = {};
   desc.id = _entity + this->entityOffset;
-  ecs_entity_init(world.c_ptr(), &desc);
-  auto e = world.entity(desc.id);
+  ecs_entity_t id = ecs_entity_init(world.c_ptr(), &desc);
+  auto e = world.entity(id).enable();
   if (e.id() > this->highestAllocatedEntity)
     this->highestAllocatedEntity = e.id();
   return e.add<SimEntity>().add<NewEntity>().add<ModifiedComponent>().disable<ModifiedComponent>().add(flecs::OrderedChildren).id() - this->entityOffset;
