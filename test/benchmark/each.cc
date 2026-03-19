@@ -355,7 +355,7 @@ BENCHMARK_DEFINE_F(EnttManyComponentFixture, EnttEach5Component)
   {
     auto entityCount = _st.range(0);
 
-    for (int eachIter = 0; eachIter < kEachIterations; eachIter++)
+    for (int eachIter = 0; eachIter < kEachIterations; ++eachIter)
     {
       int entitiesMatched = 0;
 
@@ -371,6 +371,66 @@ BENCHMARK_DEFINE_F(EnttManyComponentFixture, EnttEach5Component)
             entitiesMatched++;
 
             return true;
+          });
+
+      if (entitiesMatched != entityCount)
+      {
+        _st.SkipWithError("Failed to match correct number of entities");
+      }
+    }
+  }
+}
+
+BENCHMARK_DEFINE_F(EnttManyComponentFixture, EnttEach5ComponentGroup)
+(benchmark::State &_st)
+{
+  for (auto _ : _st)
+  {
+    auto entityCount = _st.range(0);
+
+    for (int eachIter = 0; eachIter < kEachIterations; ++eachIter)
+    {
+      int entitiesMatched = 0;
+      auto group = ecs->group<const components::Name, AngularVelocity, Inertial, LinearAcceleration, LinearVelocity>();
+
+      group.each(
+          [&](const components::Name&,
+              const AngularVelocity&,
+              const Inertial&,
+              const LinearAcceleration&,
+              const LinearVelocity&)
+          {
+            entitiesMatched++;
+          });
+
+      if (entitiesMatched != entityCount)
+      {
+        _st.SkipWithError("Failed to match correct number of entities");
+      }
+    }
+  }
+}
+
+BENCHMARK_DEFINE_F(EnttManyComponentFixture, EnttEach5ComponentGroupNonOwning)
+(benchmark::State &_st)
+{
+  for (auto _ : _st)
+  {
+    auto entityCount = _st.range(0);
+
+    for (int eachIter = 0; eachIter < kEachIterations; ++eachIter)
+    {
+      int entitiesMatched = 0;
+      auto group = ecs->group(entt::get<const components::Name, AngularVelocity, Inertial, LinearAcceleration, LinearVelocity>);
+
+      group.each(
+          [&](const components::Name&,
+              const AngularVelocity&,
+              const Inertial&,
+              const LinearAcceleration&,
+              const LinearVelocity&)
+          {
+            entitiesMatched++;
           });
 
       if (entitiesMatched != entityCount)
@@ -550,6 +610,160 @@ BENCHMARK_DEFINE_F(EnttManyComponentFixture, EnttEach1ComponentGet4More)
   }
 }
 
+BENCHMARK_DEFINE_F(EnttManyComponentFixture, EnttEach1ComponentGet4MoreWithoutPtr)
+(benchmark::State &_st)
+{
+  for (auto _ : _st)
+  {
+    auto entityCount = _st.range(0);
+
+    for (int eachIter = 0; eachIter < kEachIterations; eachIter++)
+    {
+      int entitiesMatched = 0;
+      const auto& w = *ecs;
+      auto view = w.view<const components::Name>();
+
+      view.each(
+          [&](const auto e,
+              const components::Name&)->bool
+          {
+            if (w.try_get<AngularVelocity>(e) != nullptr &&
+                w.try_get<Inertial>(e) != nullptr &&
+                w.try_get<LinearAcceleration>(e) != nullptr &&
+                w.try_get<LinearVelocity>(e) != nullptr) {
+              entitiesMatched++;
+            }
+
+            return true;
+          });
+
+      if (entitiesMatched != entityCount)
+      {
+        _st.SkipWithError("Failed to match correct number of entities");
+      }
+    }
+  }
+}
+
+BENCHMARK_DEFINE_F(EnttManyComponentFixture, EnttEach1ComponentGet4MoreOptimized)
+(benchmark::State &_st)
+{
+  auto &av_storage = ecs->storage<AngularVelocity>();
+  auto &i_storage = ecs->storage<Inertial>();
+  auto &la_storage = ecs->storage<LinearAcceleration>();
+  auto &lv_storage = ecs->storage<LinearVelocity>();
+
+  for (auto _ : _st)
+  {
+    auto entityCount = _st.range(0);
+
+    for (int eachIter = 0; eachIter < kEachIterations; ++eachIter)
+    {
+      int entitiesMatched = 0;
+
+      auto view = ecs->view<const components::Name>();
+
+      view.each(
+          [&](const auto e,
+              const components::Name&)
+          {
+            if (av_storage.contains(e) &&
+                i_storage.contains(e) &&
+                la_storage.contains(e) &&
+                lv_storage.contains(e)) {
+              entitiesMatched++;
+            }
+          });
+
+      if (entitiesMatched != entityCount)
+      {
+        _st.SkipWithError("Failed to match correct number of entities");
+      }
+    }
+  }
+}
+
+BENCHMARK_DEFINE_F(EnttManyComponentFixture, EnttEach1ComponentGet4MoreValues)
+(benchmark::State &_st)
+{
+  auto &av_storage = ecs->storage<AngularVelocity>();
+  auto &i_storage = ecs->storage<Inertial>();
+  auto &la_storage = ecs->storage<LinearAcceleration>();
+  auto &lv_storage = ecs->storage<LinearVelocity>();
+
+  for (auto _ : _st)
+  {
+    auto entityCount = _st.range(0);
+
+    for (int eachIter = 0; eachIter < kEachIterations; ++eachIter)
+    {
+      int entitiesMatched = 0;
+
+      auto view = ecs->view<const components::Name>();
+
+      view.each(
+          [&](const auto e,
+              const components::Name&)
+          {
+            const auto &av = av_storage.get(e);
+            const auto &i = i_storage.get(e);
+            const auto &la = la_storage.get(e);
+            const auto &lv = lv_storage.get(e);
+
+            if (&av != nullptr && &i != nullptr && &la != nullptr && &lv != nullptr)
+            {
+              entitiesMatched++;
+            }
+          });
+
+      if (entitiesMatched != entityCount)
+      {
+        _st.SkipWithError("Failed to match correct number of entities");
+      }
+    }
+  }
+}
+
+BENCHMARK_DEFINE_F(EnttManyComponentFixture, EnttEach1ComponentTryGet4MoreOptimized)
+(benchmark::State &_st)
+{
+  for (auto _ : _st)
+  {
+    auto entityCount = _st.range(0);
+
+    for (int eachIter = 0; eachIter < kEachIterations; ++eachIter)
+    {
+      int entitiesMatched = 0;
+
+      auto view = ecs->view<const components::Name>();
+      auto &av_storage = ecs->storage<AngularVelocity>();
+      auto &i_storage = ecs->storage<Inertial>();
+      auto &la_storage = ecs->storage<LinearAcceleration>();
+      auto &lv_storage = ecs->storage<LinearVelocity>();
+
+      view.each(
+          [&](const auto e,
+              const components::Name&)
+          {
+            auto *av = av_storage.contains(e) ? &av_storage.get(e) : nullptr;
+            auto *i = i_storage.contains(e) ? &i_storage.get(e) : nullptr;
+            auto *la = la_storage.contains(e) ? &la_storage.get(e) : nullptr;
+            auto *lv = lv_storage.contains(e) ? &lv_storage.get(e) : nullptr;
+
+            if (av && i && la && lv)
+            {
+              entitiesMatched++;
+            }
+          });
+
+      if (entitiesMatched != entityCount)
+      {
+        _st.SkipWithError("Failed to match correct number of entities");
+      }
+    }
+  }
+}
+
 BENCHMARK_DEFINE_F(ManyComponentFixture, Each10ComponentCache)
 (benchmark::State &_st)
 {
@@ -696,6 +910,13 @@ BENCHMARK_REGISTER_F(EnttManyComponentFixture, EnttEach5Component)
   ->Arg(10000)
   ->Unit(benchmark::kMillisecond);
 
+BENCHMARK_REGISTER_F(EnttManyComponentFixture, EnttEach5ComponentGroup)
+  ->Arg(10)
+  ->Arg(100)
+  ->Arg(1000)
+  ->Arg(10000)
+  ->Unit(benchmark::kMillisecond);
+
 BENCHMARK_REGISTER_F(ManyComponentFixture, Each5ComponentCache)
   ->Arg(10)
   ->Arg(100)
@@ -738,7 +959,42 @@ BENCHMARK_REGISTER_F(FlecsManyComponentFixture, FlecsEach1ComponentGet4MoreOptio
   ->Arg(10000)
   ->Unit(benchmark::kMillisecond);
 
+BENCHMARK_REGISTER_F(EnttManyComponentFixture, EnttEach5ComponentGroupNonOwning)
+  ->Arg(10)
+  ->Arg(100)
+  ->Arg(1000)
+  ->Arg(10000)
+  ->Unit(benchmark::kMillisecond);
+
 BENCHMARK_REGISTER_F(EnttManyComponentFixture, EnttEach1ComponentGet4More)
+  ->Arg(10)
+  ->Arg(100)
+  ->Arg(1000)
+  ->Arg(10000)
+  ->Unit(benchmark::kMillisecond);
+
+BENCHMARK_REGISTER_F(EnttManyComponentFixture, EnttEach1ComponentGet4MoreWithoutPtr)
+  ->Arg(10)
+  ->Arg(100)
+  ->Arg(1000)
+  ->Arg(10000)
+  ->Unit(benchmark::kMillisecond);
+
+BENCHMARK_REGISTER_F(EnttManyComponentFixture, EnttEach1ComponentGet4MoreOptimized)
+  ->Arg(10)
+  ->Arg(100)
+  ->Arg(1000)
+  ->Arg(10000)
+  ->Unit(benchmark::kMillisecond);
+
+BENCHMARK_REGISTER_F(EnttManyComponentFixture, EnttEach1ComponentGet4MoreValues)
+  ->Arg(10)
+  ->Arg(100)
+  ->Arg(1000)
+  ->Arg(10000)
+  ->Unit(benchmark::kMillisecond);
+
+BENCHMARK_REGISTER_F(EnttManyComponentFixture, EnttEach1ComponentTryGet4MoreOptimized)
   ->Arg(10)
   ->Arg(100)
   ->Arg(1000)
