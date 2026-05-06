@@ -366,8 +366,9 @@ SimulationRunner::SimulationRunner(const sdf::World &_world,
 
   gzmsg << "Serving world SDF generation service on [" << opts.NameSpace()
          << "/" << genWorldSdfService << "]" << std::endl;
-}
 
+  this->workerPool = std::make_unique<common::WorkerPool>();
+}
 //////////////////////////////////////////////////
 SimulationRunner::~SimulationRunner()
 {
@@ -610,54 +611,11 @@ void SimulationRunner::AddSystem(
 /////////////////////////////////////////////////
 void SimulationRunner::ProcessSystemQueue()
 {
-  auto pending = this->systemMgr->PendingCount();
-
-  if (0 == pending && !this->threadsNeedCleanUp)
+  if (0 == this->systemMgr->PendingCount() && !this->threadsNeedCleanUp)
     return;
 
-  // If additional systems are to be added or have been removed,
-  // stop the existing threads.
-  this->StopWorkerThreads();
-
   this->threadsNeedCleanUp = false;
-
   this->systemMgr->ActivatePendingSystems();
-
-  unsigned int threadCount =
-    static_cast<unsigned int>(this->systemMgr->SystemsPostUpdate().size() + 1u);
-
-  gzdbg << "Creating PostUpdate worker threads: "
-    << threadCount << std::endl;
-
-  this->postUpdateStartBarrier = std::make_unique<Barrier>(threadCount);
-  this->postUpdateStopBarrier = std::make_unique<Barrier>(threadCount);
-
-  this->postUpdateThreadsRunning = true;
-  int id = 0;
-
-  for (auto &system : this->systemMgr->SystemsPostUpdate())
-  {
-    gzdbg << "Creating postupdate worker thread (" << id << ")" << std::endl;
-
-    this->postUpdateThreads.push_back(std::thread([&, id]()
-    {
-      std::stringstream ss;
-      ss << "PostUpdateThread: " << id;
-      GZ_PROFILE_THREAD_NAME(ss.str().c_str());
-      while (this->postUpdateThreadsRunning)
-      {
-        this->postUpdateStartBarrier->Wait();
-        if (this->postUpdateThreadsRunning)
-        {
-          system->PostUpdate(this->currentInfo, this->entityCompMgr);
-        }
-        this->postUpdateStopBarrier->Wait();
-      }
-      gzdbg << "Exiting postupdate worker thread ("
-        << id << ")" << std::endl;
-    }));
-    id++;
-  }
 }
 
 /////////////////////////////////////////////////
@@ -702,16 +660,29 @@ void SimulationRunner::UpdateSystems()
   {
     GZ_PROFILE("PostUpdate");
     this->entityCompMgr.LockAddingEntitiesToViews(true);
-    // If no systems implementing PostUpdate have been added, then
-    // the barriers will be uninitialized, so guard against that condition.
-    if (this->postUpdateStartBarrier && this->postUpdateStopBarrier)
+    const auto &postUpdateSystems = this->systemMgr->SystemsPostUpdate();
+    if (!postUpdateSystems.empty())
     {
       // Release the GIL from the main thread to run PostUpdate threads which
       // might be calling into python. The system that does call into python
       // needs to lock the GIL from its thread.
       MaybeGilScopedRelease release;
-      this->postUpdateStartBarrier->Wait();
-      this->postUpdateStopBarrier->Wait();
+
+      if (postUpdateSystems.size() == 1)
+      {
+        postUpdateSystems[0]->PostUpdate(this->currentInfo, this->entityCompMgr);
+      }
+      else
+      {
+        for (auto &system : postUpdateSystems)
+        {
+          this->workerPool->AddWork([&]()
+          {
+            system->PostUpdate(this->currentInfo, this->entityCompMgr);
+          });
+        }
+        this->workerPool->WaitForResults();
+      }
     }
     this->entityCompMgr.LockAddingEntitiesToViews(false);
   }
@@ -733,20 +704,7 @@ void SimulationRunner::OnStop()
 /////////////////////////////////////////////////
 void SimulationRunner::StopWorkerThreads()
 {
-  this->postUpdateThreadsRunning = false;
-  if (this->postUpdateStartBarrier)
-  {
-    this->postUpdateStartBarrier->Cancel();
-  }
-  if (this->postUpdateStopBarrier)
-  {
-    this->postUpdateStopBarrier->Cancel();
-  }
-  for (auto &thread : this->postUpdateThreads)
-  {
-    thread.join();
-  }
-  this->postUpdateThreads.clear();
+  this->workerPool.reset();
 }
 
 /////////////////////////////////////////////////
