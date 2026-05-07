@@ -67,7 +67,13 @@ namespace systems
   ///
   /// - `<time>` Target time in seconds to maintain contact.
   ///
-  /// - `<namespace>` Namespace for transport topics/services:
+  /// - `<namespace>` Optional parameter. Namespace for transport topics and
+  ///                 services. Defaults to `<model_name>/touch`.
+  ///                 Note that if multiple touch plugins without a namespace
+  ///                 are added to a model their topic / service will conflict.
+  ///                 In this case, it is recommended to either specify the
+  ///                 namespace or use nested models to have only one touch
+  ///                 plugin per model.
   ///   - `/<namespace>/enable` : Service used to enable and disable
   ///                             the plugin.
   ///   - `/<namespace>/touched` : Topic where a message is published
