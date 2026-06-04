@@ -1474,6 +1474,9 @@ gz_sim_system_libraries(
     so_lib_name = "gz-sim-physics-system.so",
     static_lib_name = "gz-sim-physics-system-static",
     visibility = ["//visibility:public"],
+    features = [
+        "-layering_check",
+    ],
     deps = [
         ":gz-sim",
         "@gz-common",
@@ -1492,6 +1495,7 @@ gz_sim_system_libraries(
         "@gz-plugin//:loader",
         "@gz-plugin//:register",
         "@sdformat",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 

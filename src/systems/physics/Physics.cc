@@ -19,6 +19,7 @@
 
 #include <gz/msgs/contact.pb.h>
 #include <gz/msgs/contacts.pb.h>
+#include <google/protobuf/arena.h>
 #include <gz/msgs/entity.pb.h>
 #include <gz/msgs/Utility.hh>
 
@@ -848,6 +849,12 @@ class gz::sim::systems::PhysicsPrivate
   /// \brief Flag to store whether the names of colliding entities should
   /// be populated in the contact points.
   public: bool contactsEntityNames = true;
+
+  /// \brief Shared wrench message to avoid allocations.
+  public: msgs::Wrench wrenchData;
+
+  /// \brief Arena for temporary allocations.
+  public: google::protobuf::Arena arena;
 };
 
 //////////////////////////////////////////////////
@@ -4379,17 +4386,17 @@ void PhysicsPrivate::UpdateSim(EntityComponentManager &_ecm,
         {
           const auto &jointWrench = jointPhys->GetTransmittedWrench();
 
-          msgs::Wrench wrenchData;
-          msgs::Set(wrenchData.mutable_torque(),
+          msgs::Set(this->wrenchData.mutable_torque(),
                     math::eigen3::convert(jointWrench.torque));
-          msgs::Set(wrenchData.mutable_force(),
+          msgs::Set(this->wrenchData.mutable_force(),
                     math::eigen3::convert(jointWrench.force));
           const auto state =
-              _wrench->SetData(wrenchData, this->wrenchEql)
+              _wrench->SetData(std::move(this->wrenchData), this->wrenchEql)
                   ? ComponentState::PeriodicChange
                   : ComponentState::NoChange;
           _ecm.SetChanged(_entity, components::JointTransmittedWrench::typeId,
                           state);
+          this->wrenchData.Clear();
         }
         else
         {
@@ -4514,15 +4521,16 @@ void PhysicsPrivate::UpdateCollisions(EntityComponentManager &_ecm)
   // Go through each collision entity that has a ContactData component and
   // set the component value to the list of contacts that correspond to
   // the collision entity
+  this->arena.Reset();
   _ecm.Each<components::Collision, components::ContactSensorData>(
       [&](const Entity &_collEntity1, components::Collision *,
           components::ContactSensorData *_contacts) -> bool
       {
-        msgs::Contacts contactsComp;
         if (entityContactMap.find(_collEntity1) == entityContactMap.end())
         {
           // Clear the last contact data
-          auto state = _contacts->SetData(contactsComp,
+          static const msgs::Contacts kEmptyContacts;
+          auto state = _contacts->SetData(kEmptyContacts,
             this->contactsEql) ?
             ComponentState::PeriodicChange :
             ComponentState::NoChange;
@@ -4532,10 +4540,20 @@ void PhysicsPrivate::UpdateCollisions(EntityComponentManager &_ecm)
         }
 
         const auto &contactMap = entityContactMap[_collEntity1];
+        #if GOOGLE_PROTOBUF_VERSION >= 4022000
+          auto *contactsComp =
+              google::protobuf::Arena::Create<msgs::Contacts>(
+              &this->arena);
+        #else
+          auto *contactsComp =
+              google::protobuf::Arena::CreateMessage<msgs::Contacts>(
+              &this->arena);
+        #endif
+        contactsComp->mutable_contact()->Reserve(contactMap.size());
 
         for (const auto &[collEntity2, contactData] : contactMap)
         {
-          msgs::Contact *contactMsg = contactsComp.add_contact();
+          msgs::Contact *contactMsg = contactsComp->add_contact();
           contactMsg->mutable_collision1()->set_id(_collEntity1);
           contactMsg->mutable_collision2()->set_id(collEntity2);
           if (this->contactsEntityNames)
@@ -4581,13 +4599,14 @@ void PhysicsPrivate::UpdateCollisions(EntityComponentManager &_ecm)
           }
         }
 
-        auto state = _contacts->SetData(contactsComp,
+        auto state = _contacts->SetData(*contactsComp,
           this->contactsEql) ?
           ComponentState::PeriodicChange :
           ComponentState::NoChange;
         _ecm.SetChanged(
           _collEntity1, components::ContactSensorData::typeId, state);
 
+        this->arena.Reset();
         return true;
       });
 }

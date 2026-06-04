@@ -374,6 +374,15 @@ namespace components
                 const std::function<
                   bool(const DataType &, const DataType &)> &_eql);
 
+    /// \brief Set the data of this component by moving it.
+    /// \param[in] _data New data for this component.
+    /// \param[in] _eql Equality comparison function. This function should
+    /// return true if two instances of DataType are equal.
+    /// \return True if the _eql function returns false.
+    public: bool SetData(DataType &&_data,
+                const std::function<
+                  bool(const DataType &, const DataType &)> &_eql);
+
     /// \brief Get the immutable component data.
     /// \return Immutable reference to the actual component information.
     public: const DataType &Data() const;
@@ -457,7 +466,23 @@ namespace components
       const std::function<bool(const DataType &, const DataType &)> &_eql)
   {
     bool result = !_eql(_data, this->data);
-    this->data = _data;
+    if (result)
+      this->data = _data;
+    return result;
+  }
+
+  //////////////////////////////////////////////////
+  template <typename DataType, typename Identifier, typename Serializer>
+  bool Component<DataType, Identifier, Serializer>::SetData(
+      DataType &&_data,
+      const std::function<bool(const DataType &, const DataType &)> &_eql)
+  {
+    bool result = !_eql(_data, this->data);
+    if (result)
+    {
+      using std::swap;
+      swap(this->data, _data);
+    }
     return result;
   }
 
