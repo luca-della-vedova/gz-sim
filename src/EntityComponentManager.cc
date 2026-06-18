@@ -175,6 +175,16 @@ class gz::sim::EntityComponentManagerPrivate
   /// \brief Keep track of entities already used to ensure uniqueness.
   public: uint64_t entityCount{0};
 
+  /// \brief Unordered map of added components. The key is the entity to
+  /// which the component belongs, and the value is a set of the component types
+  /// that has been added in this simulation step.
+  /// This is used for tracking of removed components. A component that has
+  /// both been added and removed in this simulation step will not be counted
+  /// as a removed component, since downstream users won't have access to the
+  /// component value in the first place.
+  public: std::unordered_map<Entity, std::unordered_set<ComponentTypeId>>
+    addedComponents;
+
   /// \brief During cloning, we populate two maps:
   ///  - map of cloned model entities to the non-cloned model's canonical link
   ///  - map of non-cloned canonical links to the cloned canonical link
@@ -289,6 +299,9 @@ void EntityComponentManagerPrivate::CopyFrom(
     const EntityComponentManagerPrivate &_from)
 {
   this->entityCount = _from.entityCount;
+  this->addedComponents = _from.addedComponents;
+  this->removedComponents = _from.removedComponents;
+  this->componentsMarkedAsRemoved = _from.componentsMarkedAsRemoved;
   // Not copying maps related to cloning since they are transient variables
   // that are used as return values of some member functions.
 }
@@ -596,6 +609,10 @@ void EntityComponentManager::ClearRemovedComponents()
 {
   std::lock_guard<std::mutex> lock(this->dataPtr->removedComponentsMutex);
   this->Registry().clear<RemovedComponents>();
+  this->dataPtr->removedComponents.clear();
+  // Added component map is used purely to avoid false positives in removed
+  // component detection, so we clear it here.
+  this->dataPtr->addedComponents.clear();
 }
 
 /////////////////////////////////////////////////
@@ -738,9 +755,15 @@ void EntityComponentManager::PostRemoveComponent(const Entity _entity,
   // Add component to map of removed components
   {
     std::lock_guard<std::mutex> lock(this->dataPtr->removedComponentsMutex);
-    auto& removedComp =
-      this->Registry().get_or_emplace<RemovedComponents>(_entity);
-    removedComp.data.insert(_typeId);
+    const auto addedCompIt = this->dataPtr->addedComponents.find(_entity);
+    if (addedCompIt == this->dataPtr->addedComponents.end() ||
+        addedCompIt->second.find(_typeId) == addedCompIt->second.end())
+    {
+      auto& removedComp =
+        this->Registry().get_or_emplace<RemovedComponents>(_entity);
+      removedComp.data.insert(_typeId);
+      this->dataPtr->removedComponents[_entity].insert(_typeId);
+    }
   }
 }
 
@@ -954,6 +977,7 @@ bool EntityComponentManager::CreateComponentDynamic(
       gzwarn << "Failed syncing component. This should not happen" << std::endl;
     } else {
       updateData = false;
+      this->dataPtr->addedComponents[_entity].insert(_componentTypeId);
     }
   }
 
