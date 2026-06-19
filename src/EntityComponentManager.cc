@@ -1071,6 +1071,10 @@ bool EntityComponentManager::HasEntity(const Entity _entity) const
 /////////////////////////////////////////////////
 Entity EntityComponentManager::ParentEntity(const Entity _entity) const
 {
+  auto parentComp = this->Component<components::ParentEntity>(_entity);
+  if (parentComp)
+    return parentComp->Data();
+
   auto parents = this->Entities().AdjacentsTo(_entity);
   if (parents.empty())
     return kNullEntity;
