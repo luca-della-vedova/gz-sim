@@ -658,6 +658,12 @@ Entity EntityComponentManager::CloneImpl(Entity _entity, Entity _parent,
 void EntityComponentManager::ClearNewlyCreatedEntities()
 {
   std::lock_guard<std::mutex> lock(this->dataPtr->entityCreatedMutex);
+  // Bypass resetting views if no new created entities are found
+  // Saves some work in iterating through all the views.
+  if (this->dataPtr->newlyCreatedEntities.empty())
+  {
+    return;
+  }
   this->dataPtr->newlyCreatedEntities.clear();
 
   for (auto &view : this->dataPtr->views)
