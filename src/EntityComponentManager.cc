@@ -93,14 +93,6 @@ struct PeriodicChangedComponents {
   std::unordered_set<ComponentTypeId> data;
 };
 
-struct RemovedComponents {
-  std::unordered_set<ComponentTypeId> data;
-};
-
-struct AddedComponents {
-  std::unordered_set<ComponentTypeId> data;
-};
-
 class gz::sim::EntityComponentManagerPrivate
 {
   /// \brief Implementation of the CreateEntity function, which takes a specific

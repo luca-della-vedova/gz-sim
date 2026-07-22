@@ -79,6 +79,12 @@ namespace gz
     struct Children {
       detail::FlatSet<Entity> data;
     };
+    struct RemovedComponents {
+      std::unordered_set<ComponentTypeId> data;
+    };
+    struct AddedComponents {
+      std::unordered_set<ComponentTypeId> data;
+    };
     /** \class EntityComponentManager EntityComponentManager.hh \
      * gz/sim/EntityComponentManager.hh
     **/
