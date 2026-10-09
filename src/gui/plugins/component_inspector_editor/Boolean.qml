@@ -63,7 +63,16 @@ Rectangle {
         height: typeHeader.height * 0.8
         y: typeHeader.height * 0.1
         checked: model.data
-        enabled: false
+        enabled: model.shortName === "Kinematic"
+        property bool modelValue: model.data
+        onModelValueChanged: {
+          booleanSwitch.checked = modelValue
+        }
+        onToggled: {
+          if (model.shortName === "Kinematic") {
+            componentInspectorEditor.onKinematic(checked)
+          }
+        }
 
         Binding {
           target: booleanSwitch.indicator
@@ -89,7 +98,7 @@ Rectangle {
       ToolTip {
         visible: ma.containsMouse
         delay: tooltipDelay
-        text: content.checked ? "True" : "False"
+        text: booleanSwitch.checked ? "True" : "False"
         enter: null
         exit: null
       }

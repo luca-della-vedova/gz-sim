@@ -20,6 +20,7 @@
 #include <gz/msgs/boolean.pb.h>
 #include <gz/msgs/entity_plugin_v.pb.h>
 #include <gz/msgs/light.pb.h>
+#include <gz/msgs/link.pb.h>
 #include <gz/msgs/physics.pb.h>
 #include <gz/msgs/visual.pb.h>
 #include <gz/msgs/spherical_coordinates.pb.h>
@@ -51,6 +52,7 @@
 #include "gz/sim/components/Factory.hh"
 #include "gz/sim/components/Gravity.hh"
 #include "gz/sim/components/Joint.hh"
+#include "gz/sim/components/Kinematic.hh"
 #include "gz/sim/components/LaserRetro.hh"
 #include "gz/sim/components/Level.hh"
 #include "gz/sim/components/Light.hh"
@@ -689,6 +691,12 @@ void ComponentInspector::Update(const UpdateInfo &,
         setUnit(item, "m/s\u00B2");
       }
     }
+    else if (typeId == components::Kinematic::typeId)
+    {
+      auto comp = _ecm.Component<components::Kinematic>(this->dataPtr->entity);
+      if (comp)
+        setData(item, comp->Data());
+    }
     else if (typeId == components::LaserRetro::typeId)
     {
       auto comp = _ecm.Component<components::LaserRetro>(this->dataPtr->entity);
@@ -1173,6 +1181,31 @@ void ComponentInspector::OnPhysics(double _stepSize, double _realTimeFactor)
     return;
   }
   this->dataPtr->node.Request(physicsCmdService, req, cb);
+}
+
+/////////////////////////////////////////////////
+void ComponentInspector::OnKinematic(bool _kinematic)
+{
+  std::function<void(const msgs::Boolean &, const bool)> cb =
+      [](const msgs::Boolean &/*_rep*/, const bool _result)
+  {
+    if (!_result)
+      gzerr << "Error setting link kinematic state" << std::endl;
+  };
+
+  msgs::Link req;
+  req.set_id(this->dataPtr->entity);
+  req.set_kinematic(_kinematic);
+
+  auto linkCmdService = "/world/" + this->dataPtr->worldName
+      + "/link_config";
+  linkCmdService = transport::TopicUtils::AsValidTopic(linkCmdService);
+  if (linkCmdService.empty())
+  {
+    gzerr << "Invalid link command service topic provided" << std::endl;
+    return;
+  }
+  this->dataPtr->node.Request(linkCmdService, req, cb);
 }
 
 /////////////////////////////////////////////////

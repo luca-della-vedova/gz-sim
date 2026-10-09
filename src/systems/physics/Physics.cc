@@ -79,6 +79,7 @@
 #include <gz/physics/sdf/ConstructNestedModel.hh>
 #include <gz/physics/sdf/ConstructWorld.hh>
 #include <gz/physics/Gravity.hh>
+#include <gz/physics/KinematicLink.hh>
 #include <gz/physics/Model.hh>
 #include <gz/plugin/Loader.hh>
 #include <gz/plugin/PluginPtr.hh>
@@ -129,6 +130,7 @@
 #include "gz/sim/components/JointVelocityCmd.hh"
 #include "gz/sim/components/JointVelocityLimitsCmd.hh"
 #include "gz/sim/components/JointVelocityReset.hh"
+#include "gz/sim/components/Kinematic.hh"
 #include "gz/sim/components/LinearAcceleration.hh"
 #include "gz/sim/components/LinearVelocity.hh"
 #include "gz/sim/components/LinearVelocityCmd.hh"
@@ -415,6 +417,10 @@ class gz::sim::systems::PhysicsPrivate
   /// \brief Entities whose collision enabled commands have been processed and
   /// should be deleted the following iteration.
   public: std::unordered_set<Entity> collisionEnabledCmdsToRemove;
+
+  /// \brief Entities whose kinematic commands have been processed and
+  /// should be deleted the following iteration.
+  public: std::unordered_set<Entity> kinematicCmdsToRemove;
 
   /// \brief IDs of the ContactSurfaceHandler callbacks registered for worlds
   public: std::unordered_map<Entity, std::string> worldContactCallbackIDs;
@@ -709,6 +715,13 @@ class gz::sim::systems::PhysicsPrivate
             physics::ModelCollisionEnabled>{};
 
   //////////////////////////////////////////////////
+  // Kinematic Link
+  /// \brief Feature list for setting link kinematic state.
+  public: struct KinematicLinkFeatureList : physics::FeatureList<
+            MinimumFeatureList,
+            physics::KinematicLink>{};
+
+  //////////////////////////////////////////////////
   // Link Bounding box
   /// \brief Feature list for model bounding box.
   public: struct LinkBoundingBoxFeatureList : physics::FeatureList<
@@ -857,7 +870,8 @@ class gz::sim::systems::PhysicsPrivate
             LinkForceFeatureList,
             MeshFeatureList,
             LinkBoundingBoxFeatureList,
-            GravityEnabledFeatureList>;
+            GravityEnabledFeatureList,
+            KinematicLinkFeatureList>;
 
   /// \brief A map between link entity ids in the ECM to Link Entities in
   /// gz-physics.
@@ -1579,6 +1593,15 @@ void PhysicsPrivate::CreateLinkEntities(const EntityComponentManager &_ecm,
         {
           // gravityEnabled set in SdfEntityCreator::CreateEntities()
           link.SetEnableGravity(gravityEnabled->Data());
+        }
+
+        // get link kinematic
+        const components::Kinematic *kinematic =
+            _ecm.Component<components::Kinematic>(_entity);
+        if (nullptr != kinematic)
+        {
+          // kinematic set in SdfEntityCreator::CreateEntities()
+          link.SetKinematic(kinematic->Data());
         }
 
         auto constructLinkFeature =
@@ -2995,6 +3018,74 @@ void PhysicsPrivate::UpdatePhysics(EntityComponentManager &_ecm)
     _ecm.RemoveComponent<components::CollisionEnabledCmd>(entity);
   }
 
+  // update Link Kinematic state
+  auto olderKinematicCmdsToRemove =
+    std::move(this->kinematicCmdsToRemove);
+  this->kinematicCmdsToRemove.clear();
+
+  _ecm.Each<components::Link,
+    components::KinematicCmd,
+    components::Name>(
+      [&](const Entity &_entity, const components::Link *,
+          const components::KinematicCmd *_kinematicCmd,
+          const components::Name *_name)->bool
+      {
+        if (olderKinematicCmdsToRemove.find(_entity) ==
+            olderKinematicCmdsToRemove.end())
+        {
+          this->kinematicCmdsToRemove.insert(_entity);
+        }
+
+        auto linkPtrPhys = this->entityLinkMap.Get(_entity);
+        if (nullptr == linkPtrPhys)
+          return true;
+
+        auto linkKinematicFeature =
+          this->entityLinkMap.EntityCast<KinematicLinkFeatureList>(_entity);
+
+        if (!linkKinematicFeature)
+        {
+          static bool informed{false};
+          if (!informed)
+          {
+            gzdbg << "Attempting to set link kinematic state, but the physics "
+                   << "engine doesn't support feature "
+                   << "[KinematicLink]. Kinematic state won't be populated. "
+                   << _name->Data()
+                   << std::endl;
+            informed = true;
+          }
+
+          return true;
+        }
+        linkKinematicFeature->SetKinematic(_kinematicCmd->Data());
+
+        // Reflect the applied state in the Kinematic component so
+        // queries via Link::Kinematic() return the latest value.
+        auto stateComp = _ecm.Component<components::Kinematic>(_entity);
+        if (stateComp == nullptr)
+        {
+          _ecm.CreateComponent(_entity,
+              components::Kinematic(_kinematicCmd->Data()));
+        }
+        else
+        {
+          stateComp->SetData(_kinematicCmd->Data(),
+              [](const bool &, const bool &){return false;});
+          _ecm.SetChanged(_entity,
+              components::Kinematic::typeId,
+              ComponentState::OneTimeChange);
+        }
+        return true;
+      });
+
+  // Remove kinematic commands from previous iteration. We let them
+  // rotate one iteration so other systems have a chance to react to them too.
+  for (const Entity &entity : olderKinematicCmdsToRemove)
+  {
+    _ecm.RemoveComponent<components::KinematicCmd>(entity);
+  }
+
   // Update model pose
   auto olderWorldPoseCmdsToRemove = std::move(this->worldPoseCmdsToRemove);
   this->worldPoseCmdsToRemove.clear();
@@ -3457,6 +3548,7 @@ void PhysicsPrivate::ResetPhysics(EntityComponentManager &_ecm)
   this->categoryBitmaskCmdsToRemove.clear();
   this->gravityEnabledCmdsToRemove.clear();
   this->collisionEnabledCmdsToRemove.clear();
+  this->kinematicCmdsToRemove.clear();
 
   this->RemovePhysicsEntities(_ecm);
   this->CreatePhysicsEntities(_ecm, false);

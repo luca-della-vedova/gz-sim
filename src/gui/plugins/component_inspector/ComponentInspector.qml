@@ -124,6 +124,13 @@ Rectangle {
     _ComponentInspector.OnPhysics(_stepSize, _realTimeFactor)
   }
 
+  /*
+   * Forward kinematic changes to C++
+   */
+  function onKinematic(_kinematic) {
+    _ComponentInspector.OnKinematic(_kinematic)
+  }
+
   /**
    * Forward material color changes to C++
    */

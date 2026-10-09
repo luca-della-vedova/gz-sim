@@ -69,6 +69,7 @@
 #include "gz/sim/components/JointVelocityCmd.hh"
 #include "gz/sim/components/JointVelocityLimitsCmd.hh"
 #include "gz/sim/components/JointVelocityReset.hh"
+#include "gz/sim/components/Kinematic.hh"
 #include "gz/sim/components/Link.hh"
 #include "gz/sim/components/LinearAcceleration.hh"
 #include "gz/sim/components/LinearVelocity.hh"
@@ -3703,3 +3704,120 @@ TEST_F(PhysicsSystemFixture,
   double zFinal = modelPose.Pos().Z();
   EXPECT_LT(zFinal, 0.0);
 }
+
+/////////////////////////////////////////////////
+// Test setting KinematicCmd on a link and verify that the link stops moving
+// due to gravity when made kinematic, and resumes falling when made dynamic.
+TEST_F(PhysicsSystemFixture, GZ_UTILS_TEST_DISABLED_ON_WIN32(KinematicCmd))
+{
+  for (const auto &pluginName : {
+      "gz-physics-bullet-featherstone-plugin",
+      "gz-physics-mujoco-plugin"})
+  {
+    ServerConfig serverConfig;
+
+    const auto sdfFile = std::string(PROJECT_SOURCE_PATH) +
+      "/test/worlds/falling.sdf";
+    serverConfig.SetSdfFile(sdfFile);
+    serverConfig.SetPhysicsEngine(pluginName);
+
+    Server server(serverConfig);
+    server.SetUpdatePeriod(0ns);
+
+    EntityComponentManager *ecm{nullptr};
+    test::Relay relaySystem;
+    relaySystem.OnPreUpdate([&](const UpdateInfo &,
+                                EntityComponentManager &_ecm)
+        {
+          ecm = &_ecm;
+        });
+    server.AddSystem(relaySystem.systemPtr);
+
+    EXPECT_EQ(nullptr, ecm);
+    server.Run(true, 1, false);
+    ASSERT_NE(nullptr, ecm);
+
+    const std::string modelName = "sphere";
+    const std::string linkName = "sphere_link";
+
+    auto modelEntity = ecm->EntityByComponents(
+        components::Model(), components::Name(modelName));
+    auto linkEntity = ecm->EntityByComponents(
+        components::Link(), components::Name(linkName));
+    ASSERT_NE(kNullEntity, modelEntity);
+    ASSERT_NE(kNullEntity, linkEntity);
+
+    Link link(linkEntity);
+    ASSERT_TRUE(link.Kinematic(*ecm).has_value());
+    EXPECT_FALSE(link.Kinematic(*ecm).value());
+
+    auto getPose = [&]() {
+      return ecm->Component<components::Pose>(modelEntity)->Data();
+    };
+
+    // Let the sphere fall dynamically
+    server.Run(true, 100, false);
+    double z1 = getPose().Pos().Z();
+
+    server.Run(true, 100, false);
+    double z2 = getPose().Pos().Z();
+    EXPECT_LT(z2, z1);
+
+    // Make the link kinematic and zero its velocity
+    link.SetKinematic(*ecm, true);
+    link.SetLinearVelocity(*ecm, math::Vector3d::Zero);
+    EXPECT_NE(nullptr, ecm->Component<components::KinematicCmd>(linkEntity));
+
+    // Run 2 iterations so the command is processed and then removed
+    server.Run(true, 2, false);
+    EXPECT_EQ(nullptr, ecm->Component<components::KinematicCmd>(linkEntity));
+    ASSERT_TRUE(link.Kinematic(*ecm).has_value());
+    EXPECT_TRUE(link.Kinematic(*ecm).value());
+
+    double z3 = getPose().Pos().Z();
+    server.Run(true, 100, false);
+    double z4 = getPose().Pos().Z();
+
+    // While kinematic with zero velocity, the sphere should not move due to
+    // gravity
+    EXPECT_NEAR(z3, z4, 1e-6);
+
+    // Command linear and angular velocity on the kinematic link
+    const math::Pose3d poseBeforeVel = getPose();
+    const math::Vector3d cmdLinVel(1.0, -2.0, 0.5);
+    const math::Vector3d cmdAngVel(0.0, 0.0, 1.0);
+    link.SetLinearVelocity(*ecm, cmdLinVel);
+    link.SetAngularVelocity(*ecm, cmdAngVel);
+    server.Run(true, 100, false);
+    const math::Pose3d poseAfterVel = getPose();
+    const double dt = 0.1;
+    EXPECT_NEAR(poseBeforeVel.Pos().X() + cmdLinVel.X() * dt,
+                poseAfterVel.Pos().X(), 1e-2);
+    EXPECT_NEAR(poseBeforeVel.Pos().Y() + cmdLinVel.Y() * dt,
+                poseAfterVel.Pos().Y(), 1e-2);
+    EXPECT_NEAR(poseBeforeVel.Pos().Z() + cmdLinVel.Z() * dt,
+                poseAfterVel.Pos().Z(), 1e-2);
+    EXPECT_NEAR(poseBeforeVel.Rot().Yaw() + cmdAngVel.Z() * dt,
+                poseAfterVel.Rot().Yaw(), 1e-2);
+
+    // Stop the kinematic link before switching back to dynamic
+    link.SetLinearVelocity(*ecm, math::Vector3d::Zero);
+    link.SetAngularVelocity(*ecm, math::Vector3d::Zero);
+    server.Run(true, 1, false);
+
+    // Make the link dynamic again
+    link.SetKinematic(*ecm, false);
+    server.Run(true, 2, false);
+    EXPECT_EQ(nullptr, ecm->Component<components::KinematicCmd>(linkEntity));
+    ASSERT_TRUE(link.Kinematic(*ecm).has_value());
+    EXPECT_FALSE(link.Kinematic(*ecm).value());
+
+    double z5 = getPose().Pos().Z();
+    server.Run(true, 100, false);
+    double z6 = getPose().Pos().Z();
+
+    // The sphere should resume falling
+    EXPECT_LT(z6, z5);
+  }
+}
+

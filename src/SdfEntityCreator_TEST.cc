@@ -37,6 +37,7 @@
 #include "gz/sim/components/Joint.hh"
 #include "gz/sim/components/JointAxis.hh"
 #include "gz/sim/components/JointType.hh"
+#include "gz/sim/components/Kinematic.hh"
 #include "gz/sim/components/LaserRetro.hh"
 #include "gz/sim/components/Light.hh"
 #include "gz/sim/components/Link.hh"
@@ -97,6 +98,7 @@ TEST_F(SdfEntityCreatorTest, CreateEntities)
   EXPECT_TRUE(this->ecm.HasComponentType(components::Model::typeId));
   EXPECT_TRUE(this->ecm.HasComponentType(components::CanonicalLink::typeId));
   EXPECT_TRUE(this->ecm.HasComponentType(components::Link::typeId));
+  EXPECT_TRUE(this->ecm.HasComponentType(components::Kinematic::typeId));
   EXPECT_TRUE(this->ecm.HasComponentType(components::Collision::typeId));
   EXPECT_TRUE(this->ecm.HasComponentType(components::Visual::typeId));
   EXPECT_TRUE(this->ecm.HasComponentType(components::Light::typeId));
@@ -240,17 +242,21 @@ TEST_F(SdfEntityCreatorTest, CreateEntities)
   this->ecm.Each<components::Link,
            components::Pose,
            components::ParentEntity,
-           components::Name>(
+           components::Name,
+           components::Kinematic>(
     [&](const Entity &_entity,
         const components::Link *_link,
         const components::Pose *_pose,
         const components::ParentEntity *_parent,
-        const components::Name *_name)->bool
+        const components::Name *_name,
+        const components::Kinematic *_kinematic)->bool
     {
       EXPECT_NE(nullptr, _link);
       EXPECT_NE(nullptr, _pose);
       EXPECT_NE(nullptr, _parent);
       EXPECT_NE(nullptr, _name);
+      EXPECT_NE(nullptr, _kinematic);
+      EXPECT_FALSE(_kinematic->Data());
 
       linkCount++;
 

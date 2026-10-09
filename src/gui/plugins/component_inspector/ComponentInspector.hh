@@ -288,6 +288,10 @@ namespace sim
     public: Q_INVOKABLE void OnPhysics(double _stepSize,
         double _realTimeFactor);
 
+    /// \brief Callback in Qt thread when link's kinematic property changes.
+    /// \param[in] _kinematic True if kinematic.
+    public: Q_INVOKABLE void OnKinematic(bool _kinematic);
+
     /// \brief Callback in Qt thread when material color changes for a visual
     /// \param[in] _rAmbient ambient red
     /// \param[in] _gAmbient ambient green

@@ -30,6 +30,7 @@
 #include <gz/math/Color.hh>
 #include <gz/math/SphericalCoordinates.hh>
 #include <gz/math/Vector3.hh>
+#include <gz/msgs/link.pb.h>
 #include <gz/plugin/Register.hh>
 #include <gz/transport/Node.hh>
 
@@ -44,6 +45,7 @@
 #include "gz/sim/components/Factory.hh"
 #include "gz/sim/components/Gravity.hh"
 #include "gz/sim/components/Joint.hh"
+#include "gz/sim/components/Kinematic.hh"
 #include "gz/sim/components/LaserRetro.hh"
 #include "gz/sim/components/Level.hh"
 #include "gz/sim/components/Light.hh"
@@ -709,6 +711,12 @@ void ComponentInspectorEditor::Update(const UpdateInfo &_info,
         setUnit(item, "m/s\u00B2");
       }
     }
+    else if (typeId == components::Kinematic::typeId)
+    {
+      auto comp = _ecm.Component<components::Kinematic>(this->dataPtr->entity);
+      if (comp)
+        setData(item, comp->Data());
+    }
     else if (typeId == components::LaserRetro::typeId)
     {
       auto comp = _ecm.Component<components::LaserRetro>(this->dataPtr->entity);
@@ -1193,6 +1201,31 @@ void ComponentInspectorEditor::OnPhysics(double _stepSize,
     return;
   }
   this->dataPtr->node.Request(physicsCmdService, req, cb);
+}
+
+/////////////////////////////////////////////////
+void ComponentInspectorEditor::OnKinematic(bool _kinematic)
+{
+  std::function<void(const gz::msgs::Boolean &, const bool)> cb =
+      [](const gz::msgs::Boolean &/*_rep*/, const bool _result)
+  {
+    if (!_result)
+      gzerr << "Error setting link kinematic state" << std::endl;
+  };
+
+  gz::msgs::Link req;
+  req.set_id(this->dataPtr->entity);
+  req.set_kinematic(_kinematic);
+
+  auto linkCmdService = "/world/" + this->dataPtr->worldName
+      + "/link_config";
+  linkCmdService = transport::TopicUtils::AsValidTopic(linkCmdService);
+  if (linkCmdService.empty())
+  {
+    gzerr << "Invalid link command service topic provided" << std::endl;
+    return;
+  }
+  this->dataPtr->node.Request(linkCmdService, req, cb);
 }
 
 /////////////////////////////////////////////////

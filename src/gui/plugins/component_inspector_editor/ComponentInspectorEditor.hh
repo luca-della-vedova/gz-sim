@@ -277,6 +277,10 @@ namespace sim
         double _realTimeFactor  ///< Real time factor.
     );
 
+    /// \brief Callback in Qt thread when link's kinematic property changes.
+    /// \param[in] _kinematic True if kinematic.
+    public: Q_INVOKABLE void OnKinematic(bool _kinematic);
+
     /// \brief Callback in Qt thread when material color changes for a visual.
     public: Q_INVOKABLE void OnMaterialColor(
       double _rAmbient,   ///< Ambient red.

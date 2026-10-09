@@ -26,6 +26,7 @@
 #include <gz/msgs/entity_factory.pb.h>
 #include <gz/msgs/entity_factory_with_ns.pb.h>
 #include <gz/msgs/light.pb.h>
+#include <gz/msgs/link.pb.h>
 #include <gz/msgs/material_color.pb.h>
 #include <gz/msgs/physics.pb.h>
 #include <gz/msgs/pose.pb.h>
@@ -40,6 +41,7 @@
 #include <gz/utils/ExtraTestMacros.hh>
 
 #include "gz/sim/components/Gravity.hh"
+#include "gz/sim/components/Kinematic.hh"
 #include "gz/sim/components/Light.hh"
 #include "gz/sim/components/Link.hh"
 #include "gz/sim/components/Material.hh"
@@ -2011,4 +2013,83 @@ TEST_F(UserCommandsTest, GZ_UTILS_TEST_DISABLED_ON_WIN32(Visual))
   EXPECT_FLOAT_EQ(0.0f, boxVisCmdComp->Data().material().diffuse().g());
   EXPECT_FLOAT_EQ(1.0f, boxVisCmdComp->Data().material().diffuse().b());
   EXPECT_FLOAT_EQ(1.0f, boxVisCmdComp->Data().material().diffuse().a());
+}
+
+/////////////////////////////////////////////////
+TEST_F(UserCommandsTest, GZ_UTILS_TEST_DISABLED_ON_WIN32(Link))
+{
+  ServerConfig serverConfig;
+  const auto sdfFile = common::joinPaths(
+    std::string(PROJECT_SOURCE_PATH), "test", "worlds", "shapes.sdf");
+  serverConfig.SetSdfFile(sdfFile);
+  serverConfig.SetPhysicsEngine("gz-physics-bullet-featherstone-plugin");
+
+  Server server(serverConfig);
+  EXPECT_FALSE(server.Running());
+  EXPECT_FALSE(*server.Running(0));
+
+  EntityComponentManager *ecm{nullptr};
+  test::Relay testSystem;
+  testSystem.OnPreUpdate([&](const sim::UpdateInfo &,
+                             sim::EntityComponentManager &_ecm)
+      {
+        ecm = &_ecm;
+      });
+
+  server.AddSystem(testSystem.systemPtr);
+
+  EXPECT_EQ(nullptr, ecm);
+  server.Run(true, 1, false);
+  ASSERT_NE(nullptr, ecm);
+
+  msgs::Link req;
+  msgs::Boolean res;
+  transport::Node node;
+  bool result;
+  unsigned int timeout = 5000;
+  std::string service{"/world/default/link_config"};
+
+  auto boxLinkEntity =
+    ecm->EntityByComponents(components::Link(), components::Name("box_link"));
+  ASSERT_NE(kNullEntity, boxLinkEntity);
+
+  auto boxKinematicComp = ecm->Component<components::Kinematic>(boxLinkEntity);
+  ASSERT_NE(nullptr, boxKinematicComp);
+  EXPECT_FALSE(boxKinematicComp->Data());
+
+  // Set kinematic to true by entity ID
+  req.set_id(boxLinkEntity);
+  req.set_kinematic(true);
+  EXPECT_TRUE(node.Request(service, req, timeout, res, result));
+  EXPECT_TRUE(result);
+  EXPECT_TRUE(res.data());
+
+  server.Run(true, 1, false);
+  auto boxKinematicCmdComp =
+    ecm->Component<components::KinematicCmd>(boxLinkEntity);
+  ASSERT_NE(nullptr, boxKinematicCmdComp);
+  EXPECT_TRUE(boxKinematicCmdComp->Data());
+  boxKinematicComp = ecm->Component<components::Kinematic>(boxLinkEntity);
+  ASSERT_NE(nullptr, boxKinematicComp);
+  EXPECT_TRUE(boxKinematicComp->Data());
+
+  server.Run(true, 1, false);
+  EXPECT_EQ(nullptr, ecm->Component<components::KinematicCmd>(boxLinkEntity));
+
+  // Set kinematic to false by link name
+  req.Clear();
+  req.set_name("box_link");
+  req.set_kinematic(false);
+  EXPECT_TRUE(node.Request(service, req, timeout, res, result));
+  EXPECT_TRUE(result);
+  EXPECT_TRUE(res.data());
+
+  server.Run(true, 1, false);
+  boxKinematicCmdComp =
+    ecm->Component<components::KinematicCmd>(boxLinkEntity);
+  ASSERT_NE(nullptr, boxKinematicCmdComp);
+  EXPECT_FALSE(boxKinematicCmdComp->Data());
+  boxKinematicComp = ecm->Component<components::Kinematic>(boxLinkEntity);
+  ASSERT_NE(nullptr, boxKinematicComp);
+  EXPECT_FALSE(boxKinematicComp->Data());
 }

@@ -54,6 +54,7 @@
 #include "gz/sim/components/Joint.hh"
 #include "gz/sim/components/JointAxis.hh"
 #include "gz/sim/components/JointType.hh"
+#include "gz/sim/components/Kinematic.hh"
 #include "gz/sim/components/LaserRetro.hh"
 #include "gz/sim/components/Level.hh"
 #include "gz/sim/components/LevelEntityNames.hh"
@@ -738,6 +739,9 @@ Entity SdfEntityCreator::CreateEntities(const sdf::Link *_link)
     this->dataPtr->ecm->CreateComponent(
         linkEntity, components::GravityEnabled(false));
   }
+
+  this->dataPtr->ecm->CreateComponent(
+      linkEntity, components::Kinematic(_link->Kinematic()));
 
   // Visuals
   for (uint64_t visualIndex = 0; visualIndex < _link->VisualCount();

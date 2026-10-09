@@ -39,6 +39,7 @@
 #include <gz/msgs/entity_factory_with_ns.pb.h>
 #include <gz/msgs/entity_factory_with_ns_v.pb.h>
 #include <gz/msgs/light.pb.h>
+#include <gz/msgs/link.pb.h>
 #include <gz/msgs/material_color.pb.h>
 #include <gz/msgs/physics.pb.h>
 #include <gz/msgs/pose.pb.h>
@@ -68,6 +69,7 @@
 
 #include "gz/sim/components/Collision.hh"
 #include "gz/sim/components/Joint.hh"
+#include "gz/sim/components/Kinematic.hh"
 #include "gz/sim/components/Light.hh"
 #include "gz/sim/components/LightCmd.hh"
 #include "gz/sim/components/Link.hh"
@@ -82,6 +84,7 @@
 #include "gz/sim/components/World.hh"
 #include "gz/sim/Conversions.hh"
 #include "gz/sim/EntityComponentManager.hh"
+#include "gz/sim/Link.hh"
 #include "gz/sim/Model.hh"
 #include "gz/sim/SdfEntityCreator.hh"
 #include "gz/sim/System.hh"
@@ -465,6 +468,18 @@ class WheelSlipCommand : public UserCommandBase
                   1e-6);
             }};
 };
+/// \brief Command to modify a link entity from simulation.
+class LinkCommand : public UserCommandBase
+{
+  /// \brief Constructor
+  /// \param[in] _msg Message containing the link parameters.
+  /// \param[in] _iface Pointer to user commands interface.
+  public: LinkCommand(msgs::Link *_msg,
+      std::shared_ptr<UserCommandsInterface> &_iface);
+
+  // Documentation inherited
+  public: bool Execute() final;
+};
 }
 }
 }
@@ -694,6 +709,10 @@ void UserCommands::Configure(const Entity &_entity,
   this->dataPtr
       ->AdvertiseService<WheelSlipCommand, msgs::WheelSlipParametersCmd>(
           "/world/" + validWorldName + "/wheel_slip", "Material");
+
+  // Link service
+  this->dataPtr->AdvertiseService<LinkCommand, msgs::Link>(
+      "/world/" + validWorldName + "/link_config", "Link configuration");
 }
 
 //////////////////////////////////////////////////
@@ -1900,6 +1919,55 @@ bool WheelSlipCommand::Execute()
   gzerr << "Found entity with scoped name [" << wheelSlipMsg->entity().name()
           << "], is neither a model or a link." << std::endl;
   return false;
+}
+
+//////////////////////////////////////////////////
+LinkCommand::LinkCommand(msgs::Link *_msg,
+    std::shared_ptr<UserCommandsInterface> &_iface)
+    : UserCommandBase(_msg, _iface)
+{
+}
+
+//////////////////////////////////////////////////
+bool LinkCommand::Execute()
+{
+  auto linkMsg = gz::msgs::DoDynamicCastMessage<msgs::Link>(this->msg);
+  if (nullptr == linkMsg)
+  {
+    gzerr << "Internal error, null link message" << std::endl;
+    return false;
+  }
+
+  Entity linkEntity = kNullEntity;
+  if (linkMsg->id() != kNullEntity)
+  {
+    linkEntity = linkMsg->id();
+  }
+  else if (!linkMsg->name().empty())
+  {
+    auto entities = entitiesFromScopedName(linkMsg->name(), *this->iface->ecm);
+    if (entities.size() == 1)
+    {
+      linkEntity = *entities.begin();
+    }
+    else if (entities.empty())
+    {
+      linkEntity = this->iface->ecm->EntityByComponents(
+          components::Link(), components::Name(linkMsg->name()));
+    }
+  }
+
+  if (linkEntity == kNullEntity ||
+      nullptr == this->iface->ecm->Component<components::Link>(linkEntity))
+  {
+    gzerr << "Failed to find link entity with name [" << linkMsg->name()
+           << "] and ID [" << linkMsg->id() << "]." << std::endl;
+    return false;
+  }
+
+  Link link(linkEntity);
+  link.SetKinematic(*this->iface->ecm, linkMsg->kinematic());
+  return true;
 }
 
 GZ_ADD_PLUGIN(UserCommands, System,
