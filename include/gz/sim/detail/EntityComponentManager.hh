@@ -376,9 +376,13 @@ void EntityComponentManager::Each(typename identity<std::function<
   auto view = this->FindView<ComponentTypeTs...>();
 
   // Iterate over the entities in the view, and invoke the callback
-  // function.
-  for (const Entity entity : view->Entities())
+  // function. Advance the iterator before invoking the callback so that
+  // removing a component from the current entity inside the callback does
+  // not invalidate the iterator.
+  const auto &entities = view->Entities();
+  for (auto it = entities.begin(), end = entities.end(); it != end;)
   {
+    const Entity entity = *it++;
     const auto &data = view->EntityComponentData(entity);
     if (!detail::applyFunction<const ComponentTypeTs...>(_f, entity, data))
     {
@@ -397,9 +401,13 @@ void EntityComponentManager::Each(typename identity<std::function<
   auto view = this->FindView<ComponentTypeTs...>();
 
   // Iterate over the entities in the view, and invoke the callback
-  // function.
-  for (const Entity entity : view->Entities())
+  // function. Advance the iterator before invoking the callback so that
+  // removing a component from the current entity inside the callback does
+  // not invalidate the iterator.
+  const auto &entities = view->Entities();
+  for (auto it = entities.begin(), end = entities.end(); it != end;)
   {
+    const Entity entity = *it++;
     const auto &data = view->EntityComponentData(entity);
     if (!detail::applyFunction<ComponentTypeTs...>(_f, entity, data))
     {
@@ -431,10 +439,13 @@ void EntityComponentManager::EachNew(typename identity<std::function<
   auto view = this->FindView<ComponentTypeTs...>();
 
   // Iterate over the entities in the view and in the newly created
-  // entities list, and invoke the callback
-  // function.
-  for (const Entity entity : view->NewEntities())
+  // entities list, and invoke the callback function. Advance the iterator
+  // before invoking the callback so that removing a component from the
+  // current entity inside the callback does not invalidate the iterator.
+  const auto &newEntities = view->NewEntities();
+  for (auto it = newEntities.begin(), end = newEntities.end(); it != end;)
   {
+    const Entity entity = *it++;
     const auto &data = view->EntityComponentData(entity);
     if (!detail::applyFunction<ComponentTypeTs...>(_f, entity, data))
     {
@@ -458,10 +469,13 @@ void EntityComponentManager::EachNew(typename identity<std::function<
   auto view = this->FindView<ComponentTypeTs...>();
 
   // Iterate over the entities in the view and in the newly created
-  // entities list, and invoke the callback
-  // function.
-  for (const Entity entity : view->NewEntities())
+  // entities list, and invoke the callback function. Advance the iterator
+  // before invoking the callback so that removing a component from the
+  // current entity inside the callback does not invalidate the iterator.
+  const auto &newEntities = view->NewEntities();
+  for (auto it = newEntities.begin(), end = newEntities.end(); it != end;)
   {
+    const Entity entity = *it++;
     const auto &data = view->EntityComponentData(entity);
     if (!detail::applyFunction<const ComponentTypeTs...>(_f, entity, data))
     {
